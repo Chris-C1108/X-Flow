@@ -1,0 +1,29 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Vite / Build outputs
+dist/
+dist-ssr/
+*.local
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Project specific
+.env
+*.log
+*.temp.cmd
+POST.md
+
+# Agent related
+.agent/
+.agents/
+! .agents/knowledge/
+! .agents/AGENTS.md
+! .agents/dev-docs/
+! .agents/todo/
