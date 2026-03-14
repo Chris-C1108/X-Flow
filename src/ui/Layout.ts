@@ -1,6 +1,8 @@
 import { PoolManager } from '../api/PoolManager';
+import { QueryState } from '../api/CacheManager';
 import { Components } from './Components';
 import { formatCount, escapeHtml } from '../utils/Format';
+import { log } from '../utils/Logger';
 
 function escapeCSSUrl(url: string) {
     return url.replace(/["'\\]/g, '\\$&');
@@ -60,24 +62,93 @@ export class Layout {
         `).join('');
     }
 
+    // ─── Unified filter switching ───────────────────────────────────
+
+    /**
+     * 统一入口：所有 UI 筛选切换都走此方法。
+     * 缓存命中则秒开，否则展示 skeleton loading。
+     */
+    private async applyFilters(partial: Partial<QueryState>, opts?: { channelSwitch?: boolean }) {
+        const willHitCache = this.pool.hasFreshCache(partial);
+
+        if (!willHitCache) {
+            const grid = document.getElementById('grid-container');
+            if (grid) grid.innerHTML = this.generateSkeletons();
+            const banner = document.getElementById('hero-banner');
+            if (banner) banner.style.display = 'none';
+        }
+
+        // Channel switch: update theme
+        if (opts?.channelSwitch && partial.isAnimeOnly !== undefined) {
+            document.body.className = partial.isAnimeOnly ? 'theme-anime' : 'theme-real';
+        }
+
+        try {
+            const result = await this.pool.loadInitialData(partial);
+            if (this.pool.getDataPool().length === 0) {
+                this.renderEmptyState();
+            } else {
+                this.renderAll();
+            }
+            log(`applyFilters: ${willHitCache ? 'Cache HIT ⚡' : 'Fetched'} (fromCache=${result.fromCache})`);
+        } catch (error) {
+            console.error('Failed to apply filters:', error);
+            this.renderErrorState();
+        }
+
+        // Schedule background preloads after each filter switch
+        this.schedulePreloads();
+    }
+
+    /**
+     * 后台预加载策略：预取当前维度的邻近组合 + 另一次元的默认组合
+     */
+    private schedulePreloads() {
+        const q = this.pool.getCurrentQuery();
+
+        // 1. Same channel, same sort, next likely ranges
+        const ranges = ['daily', 'weekly', 'monthly', 'all'];
+        const nextRange = ranges.find(r => r !== q.range) || 'weekly';
+
+        // 2. Other channel, same range + sort
+        const otherChannel: QueryState = {
+            isAnimeOnly: !q.isAnimeOnly,
+            range: q.range,
+            sort: q.sort,
+        };
+
+        const sameChannelOtherRange: QueryState = {
+            isAnimeOnly: q.isAnimeOnly,
+            range: nextRange,
+            sort: q.sort,
+        };
+
+        // Sequential preloads to avoid 429
+        setTimeout(() => {
+            this.pool.preload(sameChannelOtherRange).then(() => {
+                this.pool.preload(otherChannel);
+            });
+        }, 1500);
+    }
+
+    // ─── Event binding ──────────────────────────────────────────────
+
     private bindEvents() {
+        // Desktop sidebar range buttons
         document.querySelectorAll('.nav-item[data-range]').forEach(item => {
             item.addEventListener('click', async () => {
-                document.querySelectorAll('.nav-item[data-range]').forEach(n => n.classList.remove('active'));
-                item.classList.add('active');
                 const range = (item as HTMLElement).dataset.range;
-                await this.pool.loadInitialData({ range });
-                this.renderAll();
+                this.syncRangeUI(range!);
+                await this.applyFilters({ range });
             });
         });
 
+        // Desktop sort buttons
         document.querySelectorAll('.sort-btn[data-sort]').forEach(btn => {
             btn.addEventListener('click', async () => {
-                document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
                 const sort = (btn as HTMLElement).dataset.sort;
-                await this.pool.loadInitialData({ sort });
-                this.renderAll();
+                this.syncSortUI(sort!);
+                await this.applyFilters({ sort });
             });
         });
 
@@ -118,16 +189,10 @@ export class Layout {
         document.querySelectorAll('#range-dropdown .mobile-dd-item').forEach(item => {
             item.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                document.querySelectorAll('#range-dropdown .mobile-dd-item').forEach(n => n.classList.remove('active'));
-                item.classList.add('active');
-                // Also sync sidebar
-                document.querySelectorAll('.nav-item[data-range]').forEach(n => n.classList.remove('active'));
-                const matchSidebar = document.querySelector(`.nav-item[data-range="${(item as HTMLElement).dataset.range}"]`);
-                matchSidebar?.classList.add('active');
-                closeAllDropdowns();
                 const range = (item as HTMLElement).dataset.range;
-                await this.pool.loadInitialData({ range });
-                this.renderAll();
+                this.syncRangeUI(range!);
+                closeAllDropdowns();
+                await this.applyFilters({ range });
             });
         });
 
@@ -135,19 +200,14 @@ export class Layout {
         document.querySelectorAll('#sort-dropdown .mobile-dd-item').forEach(item => {
             item.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                document.querySelectorAll('#sort-dropdown .mobile-dd-item').forEach(n => n.classList.remove('active'));
-                item.classList.add('active');
-                // Also sync desktop sort
-                document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
-                const matchSort = document.querySelector(`.sort-btn[data-sort="${(item as HTMLElement).dataset.sort}"]`);
-                matchSort?.classList.add('active');
-                closeAllDropdowns();
                 const sort = (item as HTMLElement).dataset.sort;
-                await this.pool.loadInitialData({ sort });
-                this.renderAll();
+                this.syncSortUI(sort!);
+                closeAllDropdowns();
+                await this.applyFilters({ sort });
             });
         });
 
+        // Channel switch (次元切换)
         document.querySelectorAll('.channel-btn[data-channel]').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const channel = (btn as HTMLElement).dataset.channel;
@@ -158,24 +218,17 @@ export class Layout {
                 const topbarPulse = document.getElementById('topbar-pulse');
                 if (topbarPulse) {
                     topbarPulse.classList.remove('pulse-anim');
-                    void topbarPulse.offsetWidth; // trigger reflow
+                    void topbarPulse.offsetWidth;
                     topbarPulse.classList.add('pulse-anim');
                 }
                 
-                // Update theme class
-                document.body.className = isAnime ? 'theme-anime' : 'theme-real';
-                
-                // Set the channel explicitly in the ApiClient config
-                this.pool.getApiClient().setChannel(isAnime);
-                
-                // Update Switcher UI explicitly
+                // Update Switcher UI
                 const switcher = btn.closest('.channel-switch');
                 if (switcher) {
                     if (isAnime) switcher.classList.add('is-anime');
                     else switcher.classList.remove('is-anime');
                 }
                 
-                // Re-render topbar cleanly via active classes
                 document.querySelectorAll('.channel-btn').forEach(b => {
                     b.classList.remove('active');
                     b.setAttribute('aria-selected', 'false');
@@ -183,22 +236,19 @@ export class Layout {
                 btn.classList.add('active');
                 btn.setAttribute('aria-selected', 'true');
                 
-                // Sink old cards
-                const cards = document.querySelectorAll('.media-card');
-                cards.forEach(c => c.classList.add('sinking'));
+                // Sink old cards animation (only if not cached for instant feel)
+                const willHitCache = this.pool.hasFreshCache({ isAnimeOnly: isAnime });
+                if (!willHitCache) {
+                    const cards = document.querySelectorAll('.media-card');
+                    cards.forEach(c => c.classList.add('sinking'));
+                    await new Promise(res => setTimeout(res, 300));
+                }
                 
-                // Wait for sink animation
-                await new Promise(res => setTimeout(res, 300));
-                
-                // Render loading states while switching channels 
-                const grid = document.getElementById('grid-container');
-                if (grid) grid.innerHTML = this.generateSkeletons();
-                
-                await this.pool.loadInitialData(); // the API will automatically fetch with the newly updated baseurl
-                this.renderAll();
+                await this.applyFilters({ isAnimeOnly: isAnime }, { channelSwitch: true });
             });
         });
 
+        // Infinite scroll
         const mainContainer = document.getElementById('main-scroll');
         if (mainContainer) {
             let isFetching = false;
@@ -209,7 +259,6 @@ export class Layout {
                 const scrollHeight = mainContainer.scrollHeight;
                 const clientHeight = mainContainer.clientHeight;
                 
-                // Only check when scrolling down and near bottom (30% relative or 800px)
                 if (scrollTop > lastScrollTop && !isFetching) {
                     const threshold = Math.min(scrollHeight * 0.3, 800);
                     if (scrollTop + clientHeight >= scrollHeight - threshold) {
@@ -223,6 +272,7 @@ export class Layout {
             }, { passive: true });
         }
 
+        // Grid card click → open player
         const gridContainer = document.getElementById('grid-container');
         if (gridContainer) {
             gridContainer.addEventListener('click', (e) => {
@@ -231,13 +281,34 @@ export class Layout {
                     const indexAttr = card.getAttribute('data-index');
                     if (indexAttr) {
                         const index = parseInt(indexAttr);
-                        console.log('Open player for index', index);
                         this.player.openModal(index);
                     }
                 }
             });
         }
     }
+
+    // ─── UI sync helpers ────────────────────────────────────────────
+
+    private syncRangeUI(range: string) {
+        // Sync sidebar
+        document.querySelectorAll('.nav-item[data-range]').forEach(n => n.classList.remove('active'));
+        document.querySelector(`.nav-item[data-range="${range}"]`)?.classList.add('active');
+        // Sync mobile dropdown
+        document.querySelectorAll('#range-dropdown .mobile-dd-item').forEach(n => n.classList.remove('active'));
+        document.querySelector(`#range-dropdown .mobile-dd-item[data-range="${range}"]`)?.classList.add('active');
+    }
+
+    private syncSortUI(sort: string) {
+        // Sync desktop sort buttons
+        document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector(`.sort-btn[data-sort="${sort}"]`)?.classList.add('active');
+        // Sync mobile dropdown
+        document.querySelectorAll('#sort-dropdown .mobile-dd-item').forEach(n => n.classList.remove('active'));
+        document.querySelector(`#sort-dropdown .mobile-dd-item[data-sort="${sort}"]`)?.classList.add('active');
+    }
+
+    // ─── Data loading ───────────────────────────────────────────────
 
     private async loadInitialData() {
         try {
@@ -247,6 +318,8 @@ export class Layout {
             } else {
                 this.renderAll();
             }
+            // Kick off background preloads after initial load
+            this.schedulePreloads();
         } catch (error) {
             console.error('Failed to load initial data:', error);
             this.renderErrorState();
@@ -257,7 +330,7 @@ export class Layout {
         try {
             const newData = await this.pool.fetchNextPage();
             if (newData && newData.length > 0) {
-                this.renderGrid(true); // append only
+                this.renderGrid(true);
             } else if (this.pool.getDataPool().length === 0) {
                 this.renderEmptyState();
             }
@@ -267,9 +340,11 @@ export class Layout {
         }
     }
 
+    // ─── Rendering ──────────────────────────────────────────────────
+
     private renderAll() {
         this.renderHero();
-        this.renderGrid(false); // full re-render
+        this.renderGrid(false);
     }
     
     private renderEmptyState() {
@@ -303,7 +378,6 @@ export class Layout {
                 </div>
             `;
             
-            // Re-bind the one-time event for pure retry
             document.addEventListener('xflow-retry', () => {
                 if (container) container.innerHTML = this.generateSkeletons();
                 this.loadInitialData();
@@ -362,7 +436,6 @@ export class Layout {
         if (heroPv) heroPv.textContent = formatCount(hero.pv);
         
         banner.onclick = () => {
-            console.log('Open player for index 0');
             this.player.openModal(0);
         };
     }
@@ -374,11 +447,8 @@ export class Layout {
         const list = this.pool.getDataPool();
         let html = '';
         
-        // If appending, we only generate HTML for the newly added items. For now we will just re-render cleanly for simplicity,
-        // unless you want high speed DOM appending.
         const startIndex = append ? container.children.length : 0;
 
-        // Remove existing retry block if it exists
         const oldRetryBlock = document.getElementById('tm-retry-block');
         if (oldRetryBlock) {
             oldRetryBlock.remove();

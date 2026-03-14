@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter排行榜：TikTok版
 // @namespace    xflow.loadingi.local
-// @version      5.0.1
+// @version      5.0.2
 // @author       Chris_C
 // @description  TikTok风格上下滑动切换，PC/移动端双端适配，缩略图先行加载、进度指示、点赞、只看未读、循环播放、长按倍速、广告/弹窗/重定向屏蔽
 // @license      MIT
@@ -24,7 +24,7 @@
 (function () {
   'use strict';
 
-  class ApiClient {
+  const _ApiClient = class _ApiClient {
     constructor() {
       this.baseUrl = window.location.origin;
       this.isAnime = this.baseUrl.includes("anime") ? 1 : 0;
@@ -33,8 +33,10 @@
       this.isAnime = isAnimeChannel ? 1 : 0;
     }
     async fetchList(params = {}) {
+      const mappedRange = _ApiClient.RANGE_MAP[params.range || "daily"] ?? params.range ?? "";
       const finalParams = {
         ...params,
+        range: mappedRange,
         isAnimeOnly: this.isAnime.toString(),
         per_page: (params.per_page || 50).toString()
       };
@@ -56,9 +58,47 @@
     getIsAnime() {
       return this.isAnime === 1;
     }
-  }
+  };
+  _ApiClient.RANGE_MAP = {
+    daily: "",
+    weekly: "weekly",
+    monthly: "monthly",
+    all: "all"
+  };
+  let ApiClient = _ApiClient;
   function log(...args) {
     console.log("🚀[X-Flow]", ...args);
+  }
+  const DEFAULT_TTL = 5 * 6e4;
+  class CacheManager {
+    constructor() {
+      this.store = /* @__PURE__ */ new Map();
+    }
+    makeKey(q) {
+      return [
+        q.isAnimeOnly ? 1 : 0,
+        q.range || "daily",
+        q.sort || "favorite"
+      ].join("|");
+    }
+    get(q, ttlMs = DEFAULT_TTL) {
+      const key = this.makeKey(q);
+      const entry = this.store.get(key);
+      if (!entry) return null;
+      if (Date.now() - entry.updatedAt > ttlMs) {
+        this.store.delete(key);
+        return null;
+      }
+      return entry;
+    }
+    set(q, entry) {
+      const key = this.makeKey(q);
+      log(`Cache SET: ${key} (${entry.items.length} items, nextPage=${entry.nextPage})`);
+      this.store.set(key, { ...entry, updatedAt: Date.now() });
+    }
+    hasFresh(q, ttlMs) {
+      return !!this.get(q, ttlMs);
+    }
   }
   class PoolManager {
     constructor() {
@@ -66,32 +106,89 @@
       this.isLoading = false;
       this.hasMore = true;
       this.listeners = [];
+      this.activeRequestId = 0;
+      this.preloadInFlight = /* @__PURE__ */ new Set();
+      this.currentQuery = {
+        isAnimeOnly: false,
+        range: "daily",
+        sort: "favorite"
+      };
+      this.currentPage = 1;
       this.api = new ApiClient();
-      this.context = { range: "daily", page: 1, sort: "favorite", category: "" };
-      this.dataPool = [];
+      this.cache = new CacheManager();
+      this.currentQuery.isAnimeOnly = this.api.getIsAnime();
     }
+    /**
+     * 加载初始数据。先查缓存，命中则秒开；否则 fetch page 1。
+     */
     async loadInitialData(params = {}) {
-      log("PoolManager: Resetting pool for initial data...");
-      this.context = { ...this.context, ...params, page: 1 };
+      const requestId = ++this.activeRequestId;
+      this.currentQuery = {
+        ...this.currentQuery,
+        ...params
+      };
+      this.currentPage = 1;
       this.dataPool = [];
       this.hasMore = true;
       this.isLoading = false;
-      return this.fetchNextPage();
+      this.api.setChannel(this.currentQuery.isAnimeOnly);
+      log(`PoolManager: loadInitialData for ${this.cache.makeKey(this.currentQuery)}`);
+      const cached = this.cache.get(this.currentQuery);
+      if (cached) {
+        log(`PoolManager: Cache HIT — ${cached.items.length} items`);
+        this.dataPool = [...cached.items];
+        this.currentPage = cached.nextPage;
+        this.hasMore = cached.hasMore;
+        this.listeners.forEach((cb) => cb(this.dataPool));
+        return { fromCache: true };
+      }
+      log("PoolManager: Cache MISS — fetching page 1");
+      await this.fetchPageInternal(requestId);
+      return { fromCache: false };
     }
+    /**
+     * 加载下一页数据（分页续取）
+     */
     async fetchNextPage() {
-      var _a;
       if (this.isLoading || !this.hasMore) return [];
+      const requestId = this.activeRequestId;
+      return this.fetchPageInternal(requestId);
+    }
+    /**
+     * 内部 fetch 实现，带请求 ID 防竞态
+     */
+    async fetchPageInternal(requestId) {
+      var _a;
+      if (this.isLoading) return [];
       this.isLoading = true;
-      log(`PoolManager: Fetching page ${this.context.page} for channel ${this.api.getIsAnime() ? "Anime" : "Real"}`);
+      const queryKey = this.cache.makeKey(this.currentQuery);
+      log(`PoolManager: Fetching page ${this.currentPage} for ${queryKey}`);
       try {
-        const data = await this.api.fetchList(this.context);
+        const fetchParams = {
+          range: this.currentQuery.range,
+          sort: this.currentQuery.sort,
+          category: this.currentQuery.category || "",
+          page: this.currentPage,
+          per_page: this.currentQuery.perPage || 50
+        };
+        const data = await this.api.fetchList(fetchParams);
+        if (requestId !== this.activeRequestId) {
+          log("PoolManager: Stale response discarded");
+          return [];
+        }
         if (((_a = data == null ? void 0 : data.items) == null ? void 0 : _a.length) > 0) {
           const newItems = data.items;
           this.dataPool = [...this.dataPool, ...newItems];
-          this.context.page = (this.context.page || 1) + 1;
+          this.currentPage += 1;
           if (newItems.length < 50) {
             this.hasMore = false;
           }
+          this.cache.set(this.currentQuery, {
+            items: [...this.dataPool],
+            nextPage: this.currentPage,
+            hasMore: this.hasMore,
+            updatedAt: Date.now()
+          });
           this.listeners.forEach((cb) => cb(newItems));
           return newItems;
         } else {
@@ -105,6 +202,46 @@
         this.isLoading = false;
       }
     }
+    /**
+     * 后台预加载指定维度组合的第一页（不影响当前 dataPool）
+     */
+    async preload(query) {
+      if (this.cache.hasFresh(query)) return;
+      const key = this.cache.makeKey(query);
+      if (this.preloadInFlight.has(key)) return;
+      this.preloadInFlight.add(key);
+      log(`PoolManager: Preloading ${key}...`);
+      try {
+        const tempApi = new ApiClient();
+        tempApi.setChannel(query.isAnimeOnly);
+        const data = await tempApi.fetchList({
+          range: query.range,
+          sort: query.sort,
+          category: query.category || "",
+          page: 1,
+          per_page: query.perPage || 50
+        });
+        const items = (data == null ? void 0 : data.items) || [];
+        this.cache.set(query, {
+          items,
+          nextPage: 2,
+          hasMore: items.length >= 50,
+          updatedAt: Date.now()
+        });
+        log(`PoolManager: Preload done for ${key} (${items.length} items)`);
+      } catch (e) {
+        log(`PoolManager: Preload failed for ${key}`, e);
+      } finally {
+        this.preloadInFlight.delete(key);
+      }
+    }
+    /**
+     * 检查指定组合是否有新鲜缓存
+     */
+    hasFreshCache(params) {
+      const query = { ...this.currentQuery, ...params };
+      return this.cache.hasFresh(query);
+    }
     onDataAdded(cb) {
       this.listeners.push(cb);
     }
@@ -117,8 +254,8 @@
     getDataPool() {
       return this.dataPool;
     }
-    getContext() {
-      return this.context;
+    getCurrentQuery() {
+      return { ...this.currentQuery };
     }
     getApiClient() {
       return this.api;
@@ -774,23 +911,73 @@
             </div>
         `).join("");
     }
+    // ─── Unified filter switching ───────────────────────────────────
+    /**
+     * 统一入口：所有 UI 筛选切换都走此方法。
+     * 缓存命中则秒开，否则展示 skeleton loading。
+     */
+    async applyFilters(partial, opts) {
+      const willHitCache = this.pool.hasFreshCache(partial);
+      if (!willHitCache) {
+        const grid = document.getElementById("grid-container");
+        if (grid) grid.innerHTML = this.generateSkeletons();
+        const banner = document.getElementById("hero-banner");
+        if (banner) banner.style.display = "none";
+      }
+      if ((opts == null ? void 0 : opts.channelSwitch) && partial.isAnimeOnly !== void 0) {
+        document.body.className = partial.isAnimeOnly ? "theme-anime" : "theme-real";
+      }
+      try {
+        const result = await this.pool.loadInitialData(partial);
+        if (this.pool.getDataPool().length === 0) {
+          this.renderEmptyState();
+        } else {
+          this.renderAll();
+        }
+        log(`applyFilters: ${willHitCache ? "Cache HIT ⚡" : "Fetched"} (fromCache=${result.fromCache})`);
+      } catch (error) {
+        console.error("Failed to apply filters:", error);
+        this.renderErrorState();
+      }
+      this.schedulePreloads();
+    }
+    /**
+     * 后台预加载策略：预取当前维度的邻近组合 + 另一次元的默认组合
+     */
+    schedulePreloads() {
+      const q = this.pool.getCurrentQuery();
+      const ranges = ["daily", "weekly", "monthly", "all"];
+      const nextRange = ranges.find((r) => r !== q.range) || "weekly";
+      const otherChannel = {
+        isAnimeOnly: !q.isAnimeOnly,
+        range: q.range,
+        sort: q.sort
+      };
+      const sameChannelOtherRange = {
+        isAnimeOnly: q.isAnimeOnly,
+        range: nextRange,
+        sort: q.sort
+      };
+      setTimeout(() => {
+        this.pool.preload(sameChannelOtherRange).then(() => {
+          this.pool.preload(otherChannel);
+        });
+      }, 1500);
+    }
+    // ─── Event binding ──────────────────────────────────────────────
     bindEvents() {
       document.querySelectorAll(".nav-item[data-range]").forEach((item) => {
         item.addEventListener("click", async () => {
-          document.querySelectorAll(".nav-item[data-range]").forEach((n) => n.classList.remove("active"));
-          item.classList.add("active");
           const range = item.dataset.range;
-          await this.pool.loadInitialData({ range });
-          this.renderAll();
+          this.syncRangeUI(range);
+          await this.applyFilters({ range });
         });
       });
       document.querySelectorAll(".sort-btn[data-sort]").forEach((btn) => {
         btn.addEventListener("click", async () => {
-          document.querySelectorAll(".sort-btn").forEach((b) => b.classList.remove("active"));
-          btn.classList.add("active");
           const sort = btn.dataset.sort;
-          await this.pool.loadInitialData({ sort });
-          this.renderAll();
+          this.syncSortUI(sort);
+          await this.applyFilters({ sort });
         });
       });
       const rangeBtn = document.getElementById("mobile-range-btn");
@@ -823,29 +1010,19 @@
       document.querySelectorAll("#range-dropdown .mobile-dd-item").forEach((item) => {
         item.addEventListener("click", async (e) => {
           e.stopPropagation();
-          document.querySelectorAll("#range-dropdown .mobile-dd-item").forEach((n) => n.classList.remove("active"));
-          item.classList.add("active");
-          document.querySelectorAll(".nav-item[data-range]").forEach((n) => n.classList.remove("active"));
-          const matchSidebar = document.querySelector(`.nav-item[data-range="${item.dataset.range}"]`);
-          matchSidebar == null ? void 0 : matchSidebar.classList.add("active");
-          closeAllDropdowns();
           const range = item.dataset.range;
-          await this.pool.loadInitialData({ range });
-          this.renderAll();
+          this.syncRangeUI(range);
+          closeAllDropdowns();
+          await this.applyFilters({ range });
         });
       });
       document.querySelectorAll("#sort-dropdown .mobile-dd-item").forEach((item) => {
         item.addEventListener("click", async (e) => {
           e.stopPropagation();
-          document.querySelectorAll("#sort-dropdown .mobile-dd-item").forEach((n) => n.classList.remove("active"));
-          item.classList.add("active");
-          document.querySelectorAll(".sort-btn").forEach((b) => b.classList.remove("active"));
-          const matchSort = document.querySelector(`.sort-btn[data-sort="${item.dataset.sort}"]`);
-          matchSort == null ? void 0 : matchSort.classList.add("active");
-          closeAllDropdowns();
           const sort = item.dataset.sort;
-          await this.pool.loadInitialData({ sort });
-          this.renderAll();
+          this.syncSortUI(sort);
+          closeAllDropdowns();
+          await this.applyFilters({ sort });
         });
       });
       document.querySelectorAll(".channel-btn[data-channel]").forEach((btn) => {
@@ -859,8 +1036,6 @@
             void topbarPulse.offsetWidth;
             topbarPulse.classList.add("pulse-anim");
           }
-          document.body.className = isAnime ? "theme-anime" : "theme-real";
-          this.pool.getApiClient().setChannel(isAnime);
           const switcher = btn.closest(".channel-switch");
           if (switcher) {
             if (isAnime) switcher.classList.add("is-anime");
@@ -872,13 +1047,13 @@
           });
           btn.classList.add("active");
           btn.setAttribute("aria-selected", "true");
-          const cards = document.querySelectorAll(".media-card");
-          cards.forEach((c) => c.classList.add("sinking"));
-          await new Promise((res) => setTimeout(res, 300));
-          const grid = document.getElementById("grid-container");
-          if (grid) grid.innerHTML = this.generateSkeletons();
-          await this.pool.loadInitialData();
-          this.renderAll();
+          const willHitCache = this.pool.hasFreshCache({ isAnimeOnly: isAnime });
+          if (!willHitCache) {
+            const cards = document.querySelectorAll(".media-card");
+            cards.forEach((c) => c.classList.add("sinking"));
+            await new Promise((res) => setTimeout(res, 300));
+          }
+          await this.applyFilters({ isAnimeOnly: isAnime }, { channelSwitch: true });
         });
       });
       const mainContainer = document.getElementById("main-scroll");
@@ -909,13 +1084,28 @@
             const indexAttr = card.getAttribute("data-index");
             if (indexAttr) {
               const index = parseInt(indexAttr);
-              console.log("Open player for index", index);
               this.player.openModal(index);
             }
           }
         });
       }
     }
+    // ─── UI sync helpers ────────────────────────────────────────────
+    syncRangeUI(range) {
+      var _a, _b;
+      document.querySelectorAll(".nav-item[data-range]").forEach((n) => n.classList.remove("active"));
+      (_a = document.querySelector(`.nav-item[data-range="${range}"]`)) == null ? void 0 : _a.classList.add("active");
+      document.querySelectorAll("#range-dropdown .mobile-dd-item").forEach((n) => n.classList.remove("active"));
+      (_b = document.querySelector(`#range-dropdown .mobile-dd-item[data-range="${range}"]`)) == null ? void 0 : _b.classList.add("active");
+    }
+    syncSortUI(sort) {
+      var _a, _b;
+      document.querySelectorAll(".sort-btn").forEach((b) => b.classList.remove("active"));
+      (_a = document.querySelector(`.sort-btn[data-sort="${sort}"]`)) == null ? void 0 : _a.classList.add("active");
+      document.querySelectorAll("#sort-dropdown .mobile-dd-item").forEach((n) => n.classList.remove("active"));
+      (_b = document.querySelector(`#sort-dropdown .mobile-dd-item[data-sort="${sort}"]`)) == null ? void 0 : _b.classList.add("active");
+    }
+    // ─── Data loading ───────────────────────────────────────────────
     async loadInitialData() {
       try {
         await this.pool.loadInitialData();
@@ -924,6 +1114,7 @@
         } else {
           this.renderAll();
         }
+        this.schedulePreloads();
       } catch (error) {
         console.error("Failed to load initial data:", error);
         this.renderErrorState();
@@ -942,6 +1133,7 @@
         this.appendRetryBlock();
       }
     }
+    // ─── Rendering ──────────────────────────────────────────────────
     renderAll() {
       this.renderHero();
       this.renderGrid(false);
@@ -1019,7 +1211,6 @@
       const heroPv = document.getElementById("hero-pv");
       if (heroPv) heroPv.textContent = formatCount(hero.pv);
       banner.onclick = () => {
-        console.log("Open player for index 0");
         this.player.openModal(0);
       };
     }

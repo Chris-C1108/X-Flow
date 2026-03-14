@@ -23,9 +23,23 @@ export class ApiClient {
         this.isAnime = isAnimeChannel ? 1 : 0;
     }
 
+    /**
+     * API range 参数映射：
+     * 后端 API 不识别 "daily"，日榜实际需传空字符串。
+     * weekly / monthly / all 正常传递。
+     */
+    private static readonly RANGE_MAP: Record<string, string> = {
+        daily: '',
+        weekly: 'weekly',
+        monthly: 'monthly',
+        all: 'all',
+    };
+
     public async fetchList(params: FetchParams = {}) {
+        const mappedRange = ApiClient.RANGE_MAP[params.range || 'daily'] ?? params.range ?? '';
         const finalParams: Record<string, any> = { 
             ...params, 
+            range: mappedRange,
             isAnimeOnly: this.isAnime.toString(), 
             per_page: (params.per_page || 50).toString() 
         };

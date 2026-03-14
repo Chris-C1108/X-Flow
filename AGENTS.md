@@ -101,6 +101,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 06 | channel, switch, baseUrl, isAnimeOnly, anime, real, CORS | Channel switch = flip `isAnimeOnly` query param; NEVER change `baseUrl` to another domain | [channel_switch_api_design.md](.agents/knowledge/channel_switch_api_design.md) |
 | 07 | media query, display: none, mobile button, order | CSS base styles MUST be defined BEFORE @media queries to avoid cascade overriding | [css_declaration_order_cascading.md](.agents/knowledge/css_declaration_order_cascading.md) |
 | 09 | blank screen, white, FOUC, error, finally | Always remove FOUC hide in `finally` block or error state; don't wait for API success | [api_error_fouc_protection.md](.agents/knowledge/api_error_fouc_protection.md) |
+| 10 | range, daily, all, 日榜, 总榜, same data | API `range=daily` is INVALID — daily = empty string `""`; use RANGE_MAP in ApiClient | [api_range_param_mapping.md](.agents/knowledge/api_range_param_mapping.md) |
 
 ### 🛠️ Build & Syntax
 
