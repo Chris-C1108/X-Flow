@@ -1,17 +1,20 @@
 import { Layout } from './Layout';
 import { log } from '../utils/Logger';
+import appCssText from '../styles/player.css?inline';
 
 /**
  * 职责：
- * 1. 执行 window.stop() 并清理 document.documentElement
- * 2. 使用 MutationObserver 监控并拦截原站的 Hydration 行为
- * 3. 注入高优先级 Z-Index 容器
- * * AI 关注点：确保原站 JS 无法干扰新 UI
+ * 1. document-start 阶段立即隐藏原站（防 FOUC）+ window.stop() 停止资源加载
+ * 2. body 就绪后清空 documentElement.innerHTML 物理替换 DOM
+ * 3. 重新注入应用 CSS 并启动业务
+ *
+ * 注意：不使用 document.write() — 因为在 DOMContentLoaded 后调用会触发
+ * Next.js 客户端路由的 fallback browser navigation，导致原站重新加载覆盖我们的内容。
+ * 使用 innerHTML 替换则不会触发新的导航。
  */
 export class Sandbox {
     private static _instance: Sandbox;
     private appRoot: HTMLElement | null = null;
-    private styleEl: HTMLStyleElement | null = null;
 
     private constructor() { }
 
@@ -23,115 +26,90 @@ export class Sandbox {
     }
 
     public initialize() {
-        // -1. 立即隐藏原始页面，防FOUC（闪烁）
-        const hideStyle = document.createElement('style');
-        hideStyle.id = 'xflow-hide-fouc';
-        hideStyle.textContent = 'html { display: none !important; }';
-        (document.documentElement || document.head || document.body)?.appendChild(hideStyle);
+        // Phase 1: document-start — 立即阻止原站资源加载 + 隐藏页面防 FOUC
+        try { window.stop(); } catch { /* ignore */ }
 
-        // BUG1 fix: 在 document-start 阶段注入 meta referrer
-        // 抑制所有跨域请求的 Referer 头，防止 video.twimg.com 返回 403
-        const metaReferrer = document.createElement('meta');
-        metaReferrer.name = 'referrer';
-        metaReferrer.content = 'no-referrer';
-        (document.head || document.documentElement).appendChild(metaReferrer);
+        try {
+            const s = document.createElement('style');
+            s.id = 'xflow-hide-fouc';
+            s.textContent = 'html{display:none!important}';
+            (document.documentElement || document.head || document.body)?.appendChild(s);
+        } catch { /* DOM not ready yet */ }
 
-        if (document.body) {
-            this.createSandbox();
-        } else {
-            const observer = new MutationObserver(() => {
-                if (document.body) {
-                    observer.disconnect();
-                    this.createSandbox();
-                }
-            });
-            observer.observe(document.documentElement, { childList: true, subtree: true });
-        }
-    }
+        // Phase 2: 等 body 就绪后物理替换整个 DOM
+        const doReplace = () => {
+            // 清空并重建整个 DOM 树
+            // 使用 innerHTML 替换而非 document.write() 以避免触发 Next.js 客户端路由
+            document.documentElement.innerHTML =
+                '<head>' +
+                '<meta charset="UTF-8">' +
+                '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">' +
+                '<meta name="referrer" content="no-referrer">' +
+                '<title>X-Flow | \u6781\u5883\u6d41\u5a92\u4f53</title>' +
+                '</head>' +
+                '<body style="margin:0;overflow:hidden;width:100vw;height:100vh;background:#0D0D12;">' +
+                '<div id="xflow-app-root" style="position:fixed;inset:0;z-index:2147483647;background:var(--bg-base);color:var(--text-100);overflow:hidden;"></div>' +
+                '</body>';
 
-    private createSandbox() {
-        if (document.getElementById('xflow-app-root')) return;
+            // 重新注入应用 CSS（原 GM_addStyle 注入的样式随 head 被清除）
+            this.injectAppCss();
 
-        log('拦截原网页，创建防删除沙盒...');
-
-        // 1. 注入强制保护样式：将原站的节点按在底下不可见，同时确保我们的 UI 始终置顶
-        this.styleEl = document.createElement('style');
-        this.styleEl.setAttribute('data-xflow-core', '1');
-        this.styleEl.textContent = `
-            /* 镇压原版网页，但不阻止其脚本运行以免抛错 */
-            body > *:not(#xflow-app-root) { display: none !important; opacity: 0 !important; pointer-events: none !important; height: 0 !important; overflow: hidden !important; }
-            html, body { background: var(--bg-base) !important; margin: 0 !important; overflow: hidden !important; width: 100vw !important; height: 100vh !important; }
-        `;
-        (document.head || document.documentElement).appendChild(this.styleEl);
-
-        // 2. 创建一个绝对独立的沙盒容器，不修改原有网页自身的 DOM 结构
-        this.appRoot = document.createElement('div');
-        this.appRoot.id = 'xflow-app-root';
-        this.appRoot.style.cssText = 'position: fixed; inset: 0; z-index: 2147483647; background: var(--bg-base); color: var(--text-100); overflow: hidden;';
-
-        const targetHost = document.body || document.documentElement;
-        targetHost.appendChild(this.appRoot);
-
-        // 3. 终极防御：如果 Next.js 或 React Hydration 强行重写了 body 删除了我们的沙盒，瞬间重塑它
-        const rootObserver = new MutationObserver(() => {
-            if (!document.getElementById('xflow-app-root') && document.body && this.appRoot) {
-                log('警告：检测到 React 试图抹除 X-Flow 容器，自动执行纳米级重组...');
-                document.body.appendChild(this.appRoot);
-            }
-            if (!document.querySelector('style[data-xflow-core]') && this.styleEl) {
-                (document.head || document.documentElement).appendChild(this.styleEl);
-            }
-            if (!document.querySelector('meta[name="referrer"]')) {
-                const mr = document.createElement('meta');
-                mr.name = 'referrer';
-                mr.content = 'no-referrer';
-                (document.head || document.documentElement).appendChild(mr);
-            }
-        });
-        rootObserver.observe(document.documentElement, { childList: true, subtree: true });
-
-        // 4. 初始化自引导
-        this.bootSystem();
-
-        // 5. 解除先前的防御性隐藏，让我们的沙盒显示
-        const hideStyle = document.getElementById('xflow-hide-fouc');
-        if (hideStyle?.parentNode) {
-            hideStyle.remove();
-        }
-        document.documentElement.style.display = '';
-    }
-
-    private bootSystem() {
-        log('系统清理与重建中...');
-
-        document.documentElement.className = '';
-
-        // 1. 设置 Title
-        document.title = 'X-Flow | 极境流媒体';
-
-        // 2. 注入外部字体链接 (仅当尚未存在时)
-        if (!document.querySelector('link[href*="family=Syne"]')) {
+            // 注入字体
             const fontLinks = document.createElement('div');
-            fontLinks.innerHTML = `
-                <link rel="preconnect" href="https://fonts.googleapis.com">
-                <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-                <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Syne:wght@500;700;800&display=swap" rel="stylesheet">
-            `;
+            fontLinks.innerHTML =
+                '<link rel="preconnect" href="https://fonts.googleapis.com">' +
+                '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
+                '<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Syne:wght@500;700;800&display=swap" rel="stylesheet">';
             while (fontLinks.firstChild) {
                 document.head.appendChild(fontLinks.firstChild);
             }
+
+            // 启动业务
+            this.appRoot = document.getElementById('xflow-app-root');
+            log('Sandbox: DOM 替换完成，干净环境就绪');
+            const layout = new Layout();
+            layout.init(this.appRoot!);
+        };
+
+        if (document.body) {
+            doReplace();
+        } else if (document.documentElement) {
+            const observer = new MutationObserver(() => {
+                if (document.body) {
+                    observer.disconnect();
+                    doReplace();
+                }
+            });
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+        } else {
+            // Via/360 极端情况：连 documentElement 都不存在
+            // 轮询等待
+            const timer = setInterval(() => {
+                if (document.body) {
+                    clearInterval(timer);
+                    doReplace();
+                } else if (document.documentElement && !document.body) {
+                    clearInterval(timer);
+                    const observer = new MutationObserver(() => {
+                        if (document.body) {
+                            observer.disconnect();
+                            doReplace();
+                        }
+                    });
+                    observer.observe(document.documentElement, { childList: true, subtree: true });
+                }
+            }, 4);
         }
+    }
 
-        // 3. 重新确立我们的保护样式以防意外
-        if (this.styleEl) {
-            document.head.appendChild(this.styleEl);
+    private injectAppCss() {
+        if (typeof GM_addStyle === 'function') {
+            GM_addStyle(appCssText);
+            return;
         }
-
-        // 4. 清理原始 Body 的 class
-        document.body.className = '';
-
-        // 5. 初始化业务 Layout
-        const layout = new Layout();
-        layout.init(this.appRoot!);
+        const style = document.createElement('style');
+        style.setAttribute('data-xflow-app', '1');
+        style.textContent = appCssText;
+        (document.head || document.documentElement).appendChild(style);
     }
 }
