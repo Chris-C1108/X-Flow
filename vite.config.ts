@@ -1,8 +1,10 @@
 import { defineConfig } from 'vite';
 import monkey from 'vite-plugin-monkey';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 
 export default defineConfig({
   plugins: [
+    basicSsl(),
     monkey({
       entry: 'src/main.ts',
       userscript: {
@@ -13,17 +15,20 @@ export default defineConfig({
         license: 'MIT',
         match: [
           'https://twitter-ero-video-ranking.com/*',
-          'https://x-ero-anime.com/*'
+          'https://x-ero-anime.com/*',
+          'https://truvaze.com/*'
         ],
         connect: [
           'twitter-ero-video-ranking.com',
           'x-ero-anime.com',
           'video.twimg.com',
           'pbs.twimg.com',
+          'truvaze.com',
           '*'
         ],
         grant: ['GM_xmlhttpRequest', 'GM_setValue', 'GM_getValue'],
         "run-at": 'document-start',
+        noframes: true,
       },
     }),
   ],

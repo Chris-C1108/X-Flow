@@ -36,22 +36,51 @@ export class Sandbox {
             (document.documentElement || document.head || document.body)?.appendChild(s);
         } catch { /* DOM not ready yet */ }
 
-        // Phase 2: 等 body 就绪后物理替换整个 DOM
+        // Phase 2: React 共存防御 - 选择性追加，延迟执行，防止报 #418 错误
         const doReplace = () => {
-            // 清空并重建整个 DOM 树
-            // 使用 innerHTML 替换而非 document.write() 以避免触发 Next.js 客户端路由
-            document.documentElement.innerHTML =
-                '<head>' +
-                '<meta charset="UTF-8">' +
-                '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">' +
-                '<meta name="referrer" content="no-referrer">' +
-                '<title>X-Flow | \u6781\u5883\u6d41\u5a92\u4f53</title>' +
-                '</head>' +
-                '<body style="margin:0;overflow:hidden;width:100vw;height:100vh;background:#0D0D12;">' +
-                '<div id="xflow-app-root" style="position:fixed;inset:0;z-index:2147483647;background:var(--bg-base);color:var(--text-100);overflow:hidden;"></div>' +
-                '</body>';
+            if (this.appRoot) return; // 避免重复执行
+            
+            // 隐藏原站所有直系节点，而不是销毁 (防止 React 水合报错)
+            Array.from(document.body.children).forEach(child => {
+                if (child.id !== 'xflow-app-root' && child.id !== 'xflow-hide-fouc' && child.tagName !== 'SCRIPT' && child.tagName !== 'STYLE') {
+                    (child as HTMLElement).style.display = 'none';
+                }
+            });
 
-            // 重新注入应用 CSS（原 GM_addStyle 注入的样式随 head 被清除）
+            // 接管 body 样式
+            document.body.style.setProperty('margin', '0', 'important');
+            document.body.style.setProperty('overflow', 'hidden', 'important');
+            document.body.style.setProperty('width', '100vw', 'important');
+            document.body.style.setProperty('height', '100vh', 'important');
+            document.body.style.setProperty('background', '#0D0D12', 'important');
+
+            // 注入 meta
+            if (!document.querySelector('meta[name="referrer"]')) {
+                const metaReferrer = document.createElement('meta');
+                metaReferrer.name = 'referrer';
+                metaReferrer.content = 'no-referrer';
+                document.head.appendChild(metaReferrer);
+            }
+
+            // 追加应用容器
+            let appRoot = document.getElementById('xflow-app-root');
+            if (!appRoot) {
+                appRoot = document.createElement('div');
+                appRoot.id = 'xflow-app-root';
+                appRoot.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:var(--bg-base);color:var(--text-100);overflow:hidden;';
+                document.body.appendChild(appRoot);
+            }
+            
+            // UI 级事件隔离 (防劫持)：阻止点击/触摸事件冒泡给可能幸存的底层劫持者
+            const stopPropagation = (e: Event) => e.stopPropagation();
+            appRoot.addEventListener('click', stopPropagation);
+            appRoot.addEventListener('touchstart', stopPropagation);
+            appRoot.addEventListener('mousedown', stopPropagation);
+            appRoot.addEventListener('pointerdown', stopPropagation);
+            
+            this.appRoot = appRoot;
+
+            // 重新注入应用 CSS
             this.injectAppCss();
 
             // 注入字体
@@ -63,42 +92,27 @@ export class Sandbox {
             while (fontLinks.firstChild) {
                 document.head.appendChild(fontLinks.firstChild);
             }
+            
+            const foucElement = document.getElementById('xflow-hide-fouc');
+            if (foucElement) foucElement.remove();
 
             // 启动业务
-            this.appRoot = document.getElementById('xflow-app-root');
-            log('Sandbox: DOM 替换完成，干净环境就绪');
+            log('Sandbox: DOM 接管完成，干净环境就绪');
             const layout = new Layout();
             layout.init(this.appRoot!);
         };
 
-        if (document.body) {
-            doReplace();
-        } else if (document.documentElement) {
-            const observer = new MutationObserver(() => {
-                if (document.body) {
-                    observer.disconnect();
-                    doReplace();
-                }
-            });
-            observer.observe(document.documentElement, { childList: true, subtree: true });
+        const readyAndReplace = () => {
+            // 利用 setTimeout 给 React 水合留出缓冲时间
+            setTimeout(doReplace, 1500);
+        };
+
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+            readyAndReplace();
         } else {
-            // Via/360 极端情况：连 documentElement 都不存在
-            // 轮询等待
-            const timer = setInterval(() => {
-                if (document.body) {
-                    clearInterval(timer);
-                    doReplace();
-                } else if (document.documentElement && !document.body) {
-                    clearInterval(timer);
-                    const observer = new MutationObserver(() => {
-                        if (document.body) {
-                            observer.disconnect();
-                            doReplace();
-                        }
-                    });
-                    observer.observe(document.documentElement, { childList: true, subtree: true });
-                }
-            }, 4);
+            window.addEventListener('load', readyAndReplace);
+            // 兜底机制
+            setTimeout(readyAndReplace, 3000);
         }
     }
 

@@ -1,13 +1,14 @@
 {
   "name": "x-flow",
   "private": true,
-  "version": "5.0.3",
+  "version": "5.0.5",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build"
   },
   "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "^1.2.0",
     "typescript": "^5.2.2",
     "vite": "^5.0.0",
     "vite-plugin-monkey": "^4.0.0"

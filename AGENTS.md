@@ -102,12 +102,15 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 07 | media query, display: none, mobile button, order | CSS base styles MUST be defined BEFORE @media queries to avoid cascade overriding | [css_declaration_order_cascading.md](.agents/knowledge/css_declaration_order_cascading.md) |
 | 09 | blank screen, white, FOUC, error, finally | Always remove FOUC hide in `finally` block or error state; don't wait for API success | [api_error_fouc_protection.md](.agents/knowledge/api_error_fouc_protection.md) |
 | 10 | range, daily, all, 日榜, 总榜, same data | API `range=daily` is INVALID — daily = empty string `""`; use RANGE_MAP in ApiClient | [api_range_param_mapping.md](.agents/knowledge/api_range_param_mapping.md) |
+| 11 | hydration, React, error 418, replace | Add AppRoot via CSS hide-and-append + setTimeout to avoid breaking React root | [react_hydration_coexistence.md](.agents/knowledge/react_hydration_coexistence.md) |
+| 12 | redirect, clickjacking, ad, window | Pre-hijack EventTarget prototype to block invisible ad overlays & global redirects | [global_clickjacking_defense.md](.agents/knowledge/global_clickjacking_defense.md) |
 
 ### 🛠️ Build & Syntax
 
 | ID | Trigger Keywords | Verdict | Knowledge File |
 |----|------------------|---------|----------------|
 | 02 | backtick, syntax error, vite | Escape backticks carefully or use standard quotes for template segments | [template_literal_syntax_safety.md](.agents/knowledge/template_literal_syntax_safety.md) |
+| 13 | vite client, URL, null, safari | Configure `noframes` & proxy `window.URL` for strict baseURI null bypass in iOS | [safari_null_base_uri_crash.md](.agents/knowledge/safari_null_base_uri_crash.md) |
 
 ### 📱 Player & Performance
 
