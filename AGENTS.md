@@ -91,6 +91,10 @@ npm run build            # 构建生产 .user.js 到 dist/
 
 > **BEFORE writing code or debugging, MATCH the current issue against this table.**
 > If matched, READ the linked knowledge file and follow its `Action_Steps`.
+>
+> ⚠️ **知识诅咒警告：** 部分经验文件记录的是**已失败的方案**（标记为 ❌ FAILED）。
+> 遇到相同问题时，**不要重复使用失败方案**，应先阅读失败原因，然后寻找新思路。
+> 新 BUG 不一定适合旧经验——如果旧方案在多轮迭代中反复失败，它可能基于错误的假设。
 
 ### 🏗️ Architecture & Sandbox
 
@@ -102,10 +106,11 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 07 | media query, display: none, mobile button, order | CSS base styles MUST be defined BEFORE @media queries to avoid cascade overriding | [css_declaration_order_cascading.md](.agents/knowledge/css_declaration_order_cascading.md) |
 | 09 | blank screen, white, FOUC, error, finally | Always remove FOUC hide in `finally` block or error state; don't wait for API success | [api_error_fouc_protection.md](.agents/knowledge/api_error_fouc_protection.md) |
 | 10 | range, daily, all, 日榜, 总榜, same data | API `range=daily` is INVALID — daily = empty string `""`; use RANGE_MAP in ApiClient | [api_range_param_mapping.md](.agents/knowledge/api_range_param_mapping.md) |
-| 11 | hydration, React, error 418, replace, **white screen, blank, FOUC, display none, 白屏, 1500ms** | Use `background:#0D0D12` mask (not `html{display:none}`) + `setTimeout(0)` to fix both React compat & white screen | [react_hydration_coexistence.md](.agents/knowledge/react_hydration_coexistence.md) |
-| 12 | redirect, clickjacking, ad, window, **Tab-under, location.href, location.replace, onclick=, onmousedown=, postMessage null** | Intercept `addEventListener` + `on*` property setters + `location.replace/assign/href` setter — must cover all 3 paths | [global_clickjacking_defense.md](.agents/knowledge/global_clickjacking_defense.md) |
+| 11 | hydration, React, error 418, replace, **white screen, blank, FOUC, display none, 白屏, 1500ms** | ⚠️ FOUC fix works; React coexistence ❌ FAILED under ad-hostile hosts (see postmortem) | [react_hydration_coexistence.md](.agents/knowledge/react_hydration_coexistence.md) |
+| 12 | redirect, clickjacking, ad, window, **Tab-under, location.href, location.replace, onclick=, onmousedown=, postMessage null** | ❌ FAILED — all JS-level interception approaches defeated; see postmortem for 8 failed attempts | [global_clickjacking_defense.md](.agents/knowledge/global_clickjacking_defense.md) |
 | 14 | carousel, loop, wrap, swipe back, 轮转, jump, 跳回, 反向 | Clone 6-slot track (clone-last \| r0\|r1\|r2\|r3 \| clone-first); `transitionend` instant-jump to real mirror | [infinite_carousel_clone_pattern.md](.agents/knowledge/infinite_carousel_clone_pattern.md) |
 | 15 | safari, long press, select, callout, text selection, bounce, overscroll, 长按选字, 弹出菜单 | `-webkit-user-select:none` + `-webkit-touch-callout:none` + `overscroll-behavior:none` + `touch-action:manipulation` | [safari_spa_behavior_suppression.md](.agents/knowledge/safari_spa_behavior_suppression.md) |
+| 18 | redirect, ad, 重定向, 广告, nuclear, 核平, window.stop, inline script, reload loop | ❌ **UNSOLVED** — 9 JS-level approaches all failed; read postmortem FIRST; next step = CSP meta + Content Blocker rules (see [todo/003](/.agents/todo/003-anti-ad-next-steps.md)) | [anti_ad_redirect_postmortem.md](.agents/knowledge/anti_ad_redirect_postmortem.md) |
 
 ### 🛠️ Build & Syntax
 

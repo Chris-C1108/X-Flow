@@ -4,6 +4,7 @@ import basicSsl from '@vitejs/plugin-basic-ssl';
 import obfuscator from 'rollup-plugin-obfuscator';
 
 export default defineConfig(({ command }) => ({
+  build: { sourcemap: false },
   plugins: [
     basicSsl(),
     monkey({

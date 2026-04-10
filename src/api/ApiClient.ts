@@ -15,8 +15,9 @@ export class ApiClient {
     private isAnime: number;
 
     constructor() {
-        this.baseUrl = window.location.origin;
-        this.isAnime = this.baseUrl.includes('anime') ? 1 : 0;
+        // 使用 main.ts Phase 0a 冻结的 origin，防止核平后 location 变为 null
+        this.baseUrl = (window as any).__XFLOW_ORIGIN__ || window.location.origin || 'https://twitter-ero-video-ranking.com';
+        this.isAnime = (window as any).__XFLOW_IS_ANIME__ ?? this.baseUrl.includes('anime') ? 1 : 0;
     }
 
     public setChannel(isAnimeChannel: boolean) {
@@ -51,11 +52,22 @@ export class ApiClient {
             }
         });
         
-        const res = await fetch(url.toString(), { headers: { 'accept': 'application/json' } });
-        if (!res.ok) {
-            throw new Error(`API Error: ${res.status}`);
-        }
-        return await res.json();
+        return new Promise<any>((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url.toString(),
+                headers: { 'Accept': 'application/json' },
+                responseType: 'json',
+                onload: (res) => {
+                    if (res.status >= 200 && res.status < 300) {
+                        resolve(res.response);
+                    } else {
+                        reject(new Error(`API Error: ${res.status}`));
+                    }
+                },
+                onerror: (err) => reject(new Error(`GM_xmlhttpRequest failed: ${err.error || 'Network error'}`)),
+            });
+        });
     }
     
     public getBaseUrl() {

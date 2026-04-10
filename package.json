@@ -1,7 +1,7 @@
 {
   "name": "x-flow",
   "private": true,
-  "version": "5.0.6",
+  "version": "5.0.7.dev010",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
