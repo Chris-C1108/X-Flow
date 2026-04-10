@@ -29,7 +29,9 @@ export class Layout {
         this.createPageStructure();
         this.bindEvents();
         this.player.init();
+        this.bindCarouselEvents();
         this.loadInitialData();
+        this.loadHeroCarousel();
     }
 
     private createPageStructure() {
@@ -42,8 +44,8 @@ export class Layout {
                 <main class="main-container" id="main-scroll">
                     ${Components.getTopBarHTML(this.pool.getApiClient().getIsAnime())}
                     <div class="content-pad">
-                        ${Components.getHeroBannerHTML()}
-                        <h2 class="section-title">趋势探索 <span style="font-size:1rem; color:var(--text-400); font-family:var(--font-body)">Trending Now</span></h2>
+                        ${Components.getHeroCarouselHTML()}
+                        <h2 class="section-title" id="section-title">趋势探索 <span style="font-size:1rem; color:var(--text-400); font-family:var(--font-body)">Trending Now</span></h2>
                         <div class="media-grid" id="grid-container">
                             ${this.generateSkeletons()}
                         </div>
@@ -74,8 +76,6 @@ export class Layout {
         if (!willHitCache) {
             const grid = document.getElementById('grid-container');
             if (grid) grid.innerHTML = this.generateSkeletons();
-            const banner = document.getElementById('hero-banner');
-            if (banner) banner.style.display = 'none';
         }
 
         // Channel switch: update theme
@@ -276,7 +276,7 @@ export class Layout {
         const gridContainer = document.getElementById('grid-container');
         if (gridContainer) {
             gridContainer.addEventListener('click', (e) => {
-                const card = (e.target as HTMLElement).closest('.media-card');
+                const card = (e.target as HTMLElement).closest('.media-card') as HTMLElement | null;
                 if (card) {
                     const indexAttr = card.getAttribute('data-index');
                     if (indexAttr) {
@@ -285,6 +285,106 @@ export class Layout {
                     }
                 }
             });
+
+            // ── Hover-to-play ─────────────────────────────────────────
+            let hoverVideo: HTMLVideoElement | null = null;
+            let hoverCard: HTMLElement | null = null;
+
+            const clearHoverVideo = () => {
+                if (hoverVideo) {
+                    hoverVideo.pause();
+                    hoverVideo.remove();
+                    hoverVideo = null;
+                }
+                if (hoverCard) {
+                    hoverCard.classList.remove('hover-playing');
+                    hoverCard = null;
+                }
+            };
+
+            gridContainer.addEventListener('mouseenter', (e) => {
+                const card = (e.target as HTMLElement).closest('.media-card') as HTMLElement | null;
+                if (!card || card === hoverCard) return;
+                clearHoverVideo();
+
+                const videoUrl = card.dataset.videoUrl;
+                if (!videoUrl) return;
+
+                hoverCard = card;
+                card.classList.add('hover-playing');
+
+                const video = document.createElement('video');
+                video.className = 'card-hover-video';
+                video.src = videoUrl;
+                video.muted = true;
+                video.autoplay = true;
+                video.loop = true;
+                video.playsInline = true;
+                video.preload = 'auto';
+                card.appendChild(video);
+                hoverVideo = video;
+                video.play().catch(() => {/* autoplay blocked */});
+            }, true);
+
+            gridContainer.addEventListener('mouseleave', (e) => {
+                const card = (e.target as HTMLElement).closest('.media-card') as HTMLElement | null;
+                if (card && card === hoverCard) clearHoverVideo();
+            }, true);
+
+            // ── Mobile touch: long-press (450ms) to preview, short tap to open ──
+            let touchTimer: ReturnType<typeof setTimeout> | null = null;
+            let touchStartY = 0;
+            let touchScrolled = false;
+
+            const startTouchPreview = (card: HTMLElement) => {
+                clearHoverVideo();
+                const videoUrl = card.dataset.videoUrl;
+                if (!videoUrl) return;
+                hoverCard = card;
+                card.classList.add('hover-playing');
+                const video = document.createElement('video');
+                video.className = 'card-hover-video';
+                video.src = videoUrl;
+                video.muted = true;
+                video.autoplay = true;
+                video.loop = true;
+                video.playsInline = true;
+                card.appendChild(video);
+                hoverVideo = video;
+                video.play().catch(() => {});
+            };
+
+            gridContainer.addEventListener('touchstart', (e: TouchEvent) => {
+                const card = (e.target as HTMLElement).closest('.media-card') as HTMLElement | null;
+                if (!card || !card.dataset.videoUrl) return;
+                touchScrolled = false;
+                touchStartY = e.touches[0].clientY;
+                touchTimer = setTimeout(() => {
+                    if (!touchScrolled) startTouchPreview(card);
+                }, 450);
+            }, { passive: true });
+
+            gridContainer.addEventListener('touchmove', (e: TouchEvent) => {
+                if (Math.abs(e.touches[0].clientY - touchStartY) > 10) {
+                    touchScrolled = true;
+                    if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
+                }
+            }, { passive: true });
+
+            gridContainer.addEventListener('touchend', (e: TouchEvent) => {
+                if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
+                if (hoverCard) {
+                    // Was in preview mode → stop preview, suppress the click
+                    clearHoverVideo();
+                    e.preventDefault();
+                }
+                // Short tap (no preview) → click fires naturally → opens player
+            }, { passive: false });
+
+            gridContainer.addEventListener('touchcancel', () => {
+                if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
+                clearHoverVideo();
+            }, { passive: true });
         }
     }
 
@@ -343,14 +443,28 @@ export class Layout {
     // ─── Rendering ──────────────────────────────────────────────────
 
     private renderAll() {
-        this.renderHero();
+        this.updateSectionTitle();
         this.renderGrid(false);
+    }
+
+    /** 展示当前榜单和排序模式信息 */
+    private updateSectionTitle() {
+        const el = document.getElementById('section-title');
+        if (!el) return;
+        const q = this.pool.getCurrentQuery();
+        const rangeLabel: Record<string, string> = {
+            daily: '日榜', weekly: '周榜', monthly: '月榜', all: '总榜',
+        };
+        const sortLabel: Record<string, string> = {
+            favorite: '最多喜欢', pv: '最高播放', recent: '最新发布',
+        };
+        const rl = rangeLabel[q.range] || q.range;
+        const sl = sortLabel[q.sort]  || q.sort;
+        el.innerHTML = `${rl}·${sl} <span style="font-size:0.875rem;color:var(--text-400);font-family:var(--font-body);font-weight:400;">Trending Now</span>`;
     }
     
     private renderEmptyState() {
-        const banner = document.getElementById('hero-banner');
-        if (banner) banner.style.display = 'none';
-        
+        this.updateSectionTitle();
         const container = document.getElementById('grid-container');
         if (container) {
             container.innerHTML = `
@@ -364,9 +478,7 @@ export class Layout {
     }
 
     private renderErrorState() {
-        const banner = document.getElementById('hero-banner');
-        if (banner) banner.style.display = 'none';
-        
+        this.updateSectionTitle();
         const container = document.getElementById('grid-container');
         if (container) {
             container.innerHTML = `
@@ -407,37 +519,162 @@ export class Layout {
         }
     }
 
-    private renderHero() {
-        const list = this.pool.getDataPool();
-        if (!list.length) return;
+    /**
+     * 独立并行拉取四个榜单 top1，填充 Hero Carousel。
+     * 使用 PoolManager 的 ApiClient，不影响主数据池。
+     */
+    private async loadHeroCarousel() {
+        const RANGES = [
+            { id: 'daily',   label: '日榜' },
+            { id: 'weekly',  label: '周榜' },
+            { id: 'monthly', label: '月榜' },
+            { id: 'all',     label: '总榜' },
+        ];
 
-        const banner = document.getElementById('hero-banner');
-        if (!banner) return;
+        const api = this.pool.getApiClient();
 
-        const hero = list[0];
-        banner.style.display = 'block';
-        
-        const heroBg = document.getElementById('hero-bg');
-        if (heroBg) {
-            heroBg.style.backgroundImage = `url("${escapeCSSUrl(hero.thumbnail)}")`;
-            heroBg.style.opacity = '1';
-        }
-        
-        const heroSkeleton = document.getElementById('hero-skeleton');
-        if (heroSkeleton) heroSkeleton.style.display = 'none';
-        
-        const heroTitle = document.getElementById('hero-title');
-        if (heroTitle) heroTitle.textContent = hero.title || `@${hero.tweet_account} 的神级视觉演绎`;
-        
-        const heroLikes = document.getElementById('hero-likes');
-        if (heroLikes) heroLikes.textContent = formatCount(hero.favorite);
-        
-        const heroPv = document.getElementById('hero-pv');
-        if (heroPv) heroPv.textContent = formatCount(hero.pv);
-        
-        banner.onclick = () => {
-            this.player.openModal(0);
+        const fetches = RANGES.map(async (r) => {
+            try {
+                const data = await api.fetchList({
+                    range: r.id,
+                    sort: 'favorite',
+                    page: 1,
+                    per_page: 1,
+                });
+                return { id: r.id, item: data?.items?.[0] || null };
+            } catch {
+                return { id: r.id, item: null };
+            }
+        });
+
+        const results = await Promise.all(fetches);
+
+        results.forEach(({ id, item }) => {
+            const skeleton = document.getElementById(`hc-sk-${id}`);
+            if (skeleton) skeleton.style.display = 'none';
+            if (!item) return;
+
+            const bg = document.getElementById(`hc-bg-${id}`);
+            if (bg) {
+                bg.style.backgroundImage = `url("${escapeCSSUrl(item.thumbnail)}")`;
+                bg.style.opacity = '1';
+            }
+
+            const titleEl = document.getElementById(`hc-title-${id}`);
+            if (titleEl) titleEl.textContent = item.title || `@${item.tweet_account}`;
+
+            const likesEl = document.getElementById(`hc-likes-${id}`);
+            if (likesEl) likesEl.textContent = formatCount(item.favorite);
+
+            const pvEl = document.getElementById(`hc-pv-${id}`);
+            if (pvEl) pvEl.textContent = formatCount(item.pv);
+
+            const card = document.getElementById(`hc-card-${id}`) as HTMLElement | null;
+            if (card) {
+                card.dataset.poolIndex = '0';
+                if (item.url) card.dataset.videoUrl = item.url;
+            }
+        });
+
+        // ── After populating real cards, mirror data into the 2 clone slots ──
+        // clone-prev mirrors 'all' (shown when user swipes back from daily)
+        // clone-next mirrors 'daily' (shown when user swipes forward from all)
+        const populate = (key: string, item: any) => {
+            if (!item) return;
+            const sk = document.getElementById(`hc-sk-${key}`);
+            if (sk) sk.style.display = 'none';
+            const bg = document.getElementById(`hc-bg-${key}`);
+            if (bg) { bg.style.backgroundImage = `url("${escapeCSSUrl(item.thumbnail)}")`; bg.style.opacity = '1'; }
+            const t = document.getElementById(`hc-title-${key}`);
+            if (t) t.textContent = item.title || `@${item.tweet_account}`;
+            const l = document.getElementById(`hc-likes-${key}`);
+            if (l) l.textContent = formatCount(item.favorite);
+            const p = document.getElementById(`hc-pv-${key}`);
+            if (p) p.textContent = formatCount(item.pv);
         };
+
+        const allData  = results.find(r => r.id === 'all')?.item;
+        const dailyData = results.find(r => r.id === 'daily')?.item;
+        populate('clone-prev', allData);
+        populate('clone-next', dailyData);
+    }
+
+    /** Infinite-loop carousel — 6 slots: [clone-all | d | w | m | a | clone-daily] */
+    private bindCarouselEvents() {
+        const track = document.getElementById('hc-track') as HTMLElement | null;
+        if (!track) return;
+
+        const REAL = 4;
+        const TOTAL = 6; // 2 clones + 4 real
+        const STEP = 100 / TOTAL; // ≈ 16.6667%
+        let pos = 1; // start at real-daily (slot index 1)
+
+        const dots = Array.from(document.querySelectorAll('.hc-dot'));
+
+        const applyPos = (animated: boolean) => {
+            track.style.transition = animated ? 'transform 0.55s var(--ease-smooth)' : 'none';
+            track.style.transform = `translateX(-${pos * STEP}%)`;
+        };
+
+        const syncDots = () => {
+            // real cards: pos 1→dot0, 2→dot1, 3→dot2, 4→dot3 (clones map to their mirror)
+            const di = ((pos - 1 + REAL) % REAL);
+            dots.forEach((d, i) => d.classList.toggle('active', i === di));
+        };
+
+        // Initialize without animation
+        applyPos(false);
+        syncDots();
+
+        const advance = (delta: number) => {
+            pos += delta;
+            applyPos(true);
+            syncDots();
+        };
+
+        // After slide animation ends: if we're on a clone, instant-jump to real mirror
+        track.addEventListener('transitionend', () => {
+            if (pos <= 0) {
+                pos = REAL;        // clone-prev (all) → jump to real all (slot 4)
+                applyPos(false);
+            } else if (pos >= TOTAL - 1) {
+                pos = 1;           // clone-next (daily) → jump to real daily (slot 1)
+                applyPos(false);
+            }
+        });
+
+        document.getElementById('hc-prev')?.addEventListener('click', () => advance(-1));
+        document.getElementById('hc-next')?.addEventListener('click', () => advance(1));
+
+        dots.forEach((dot, i) => dot.addEventListener('click', () => {
+            pos = i + 1; // dot0 → pos1, dot1 → pos2, ...
+            applyPos(true);
+            syncDots();
+        }));
+
+        // Touch swipe on carousel track
+        let hcTsx = 0;
+        let hcTsy = 0;
+        track.addEventListener('touchstart', (e: TouchEvent) => {
+            hcTsx = e.touches[0].clientX;
+            hcTsy = e.touches[0].clientY;
+        }, { passive: true });
+        track.addEventListener('touchend', (e: TouchEvent) => {
+            const dx = hcTsx - e.changedTouches[0].clientX;
+            const dy = Math.abs(e.changedTouches[0].clientY - hcTsy);
+            // Only swipe horizontally (ignore vertical scroll)
+            if (Math.abs(dx) > 50 && Math.abs(dx) > dy * 1.5) {
+                advance(dx > 0 ? 1 : -1);
+            }
+        }, { passive: true });
+
+        // Click on real carousel cards only → open player
+        document.getElementById('hero-carousel')?.addEventListener('click', (e) => {
+            const card = (e.target as HTMLElement).closest('.hc-card') as HTMLElement | null;
+            if (!card || card.classList.contains('hc-clone')) return;
+            const idx = card.dataset.poolIndex;
+            if (idx !== undefined) this.player.openModal(parseInt(idx));
+        });
     }
 
     private renderGrid(append: boolean = false) {
@@ -460,7 +697,7 @@ export class Layout {
             let rankClass = rankNum === 1 ? 'rank-1' : (rankNum === 2 ? 'rank-2' : (rankNum === 3 ? 'rank-3' : ''));
             
             html += `
-            <div class="media-card" style="animation-delay: ${(i % 20) * 0.05}s" data-index="${i}" role="button" tabindex="0" aria-label="${escapeHtml(item.title || 'Video card')}">
+            <div class="media-card" style="animation-delay: ${(i % 20) * 0.05}s" data-index="${i}" ${item.url ? `data-video-url="${escapeHtml(item.url)}"` : ''} role="button" tabindex="0" aria-label="${escapeHtml(item.title || 'Video card')}">
                 <img src="${item.thumbnail}" alt="${escapeHtml(item.title || 'Thumbnail')}" class="card-img" loading="lazy">
                 <div class="card-overlay"></div>
                 <div class="card-rank ${rankClass}">No.${rankNum}</div>

@@ -104,6 +104,8 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 10 | range, daily, all, 日榜, 总榜, same data | API `range=daily` is INVALID — daily = empty string `""`; use RANGE_MAP in ApiClient | [api_range_param_mapping.md](.agents/knowledge/api_range_param_mapping.md) |
 | 11 | hydration, React, error 418, replace, **white screen, blank, FOUC, display none, 白屏, 1500ms** | Use `background:#0D0D12` mask (not `html{display:none}`) + `setTimeout(0)` to fix both React compat & white screen | [react_hydration_coexistence.md](.agents/knowledge/react_hydration_coexistence.md) |
 | 12 | redirect, clickjacking, ad, window, **Tab-under, location.href, location.replace, onclick=, onmousedown=, postMessage null** | Intercept `addEventListener` + `on*` property setters + `location.replace/assign/href` setter — must cover all 3 paths | [global_clickjacking_defense.md](.agents/knowledge/global_clickjacking_defense.md) |
+| 14 | carousel, loop, wrap, swipe back, 轮转, jump, 跳回, 反向 | Clone 6-slot track (clone-last \| r0\|r1\|r2\|r3 \| clone-first); `transitionend` instant-jump to real mirror | [infinite_carousel_clone_pattern.md](.agents/knowledge/infinite_carousel_clone_pattern.md) |
+| 15 | safari, long press, select, callout, text selection, bounce, overscroll, 长按选字, 弹出菜单 | `-webkit-user-select:none` + `-webkit-touch-callout:none` + `overscroll-behavior:none` + `touch-action:manipulation` | [safari_spa_behavior_suppression.md](.agents/knowledge/safari_spa_behavior_suppression.md) |
 
 ### 🛠️ Build & Syntax
 
@@ -111,6 +113,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 |----|------------------|---------|----------------|
 | 02 | backtick, syntax error, vite | Escape backticks carefully or use standard quotes for template segments | [template_literal_syntax_safety.md](.agents/knowledge/template_literal_syntax_safety.md) |
 | 13 | vite client, URL, null, safari | Configure `noframes` & proxy `window.URL` for strict baseURI null bypass in iOS | [safari_null_base_uri_crash.md](.agents/knowledge/safari_null_base_uri_crash.md) |
+| 16 | obfuscate, encrypt, build, minify, 混淆, 加密, rollup-plugin-obfuscator, GM_ broken after build | Use `global:true`; reserve GM_ names; disable `selfDefending` & `renameProperties` | [build_obfuscation_tampermonkey.md](.agents/knowledge/build_obfuscation_tampermonkey.md) |
 
 ### 📱 Player & Performance
 
@@ -119,6 +122,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 03 | virtual list, index, swipe | Use absolute modulo for node recycling; sync play state with transition delay | [virtual_list_state_sync.md](.agents/knowledge/virtual_list_state_sync.md) |
 | 05 | preload, buffer, slow, twimg, black screen | Tiered preload: current=auto, next after 2s, prev after 4s; clear timers on navigate | [video_preload_strategy.md](.agents/knowledge/video_preload_strategy.md) |
 | 08 | progress, swipe, touch, collision, region | Partition screen: use bottom 15% for progress/seeking; ignore vertical swiping in that area | [player_gesture_partitioning.md](.agents/knowledge/player_gesture_partitioning.md) |
+| 17 | hover play, mobile, touch, preview video, 移动端悬浮, 长按播放, touchstart, preventDefault | Long-press 450ms delay + `touchmove` scroll-cancel + `touchend` `preventDefault` when previewing | [mobile_touch_hover_preview.md](.agents/knowledge/mobile_touch_hover_preview.md) |
 
 ---
 

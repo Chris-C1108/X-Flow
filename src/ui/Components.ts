@@ -65,26 +65,79 @@ export const Components = {
         `;
     },
 
-    getHeroBannerHTML() {
-        return `
-            <div class="hero-banner" id="hero-banner" tabindex="0" role="button" aria-label="Play Hero Video">
-                <style>
-                    .skeleton-pulse { animation: pulse 1.5s infinite ease-in-out; }
-                    @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
-                    .nav-item { background: transparent; border: none; text-align: left; font-family: inherit; font-size: 1rem; width: 100%; }
-                </style>
-                <div class="hero-skeleton absolute-inset skeleton-pulse" id="hero-skeleton" style="background: rgba(255,255,255,0.05); position: absolute; inset: 0; z-index: 1;"></div>
-                <div class="hero-bg" id="hero-bg" style="opacity: 0; transition: opacity 0.5s ease; z-index: 2;"></div>
-                <div class="hero-overlay" style="z-index: 3;"></div>
-                <div class="hero-content" style="z-index: 4;">
-                    <div class="hero-rank">No.1</div><h1 class="hero-title" id="hero-title"></h1>
-                    <div class="hero-meta">
-                        <span class="meta-item"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> <span id="hero-likes">--</span></span>
-                        <span class="meta-item"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg> <span id="hero-pv">--</span></span>
+    getHeroCarouselHTML() {
+        const ranges = [
+            { id: 'daily',   label: '日榜', en: 'Daily',    icon: '⏱' },
+            { id: 'weekly',  label: '周榜', en: 'Weekly',   icon: '📅' },
+            { id: 'monthly', label: '月榜', en: 'Monthly',  icon: '🗓' },
+            { id: 'all',     label: '总榜', en: 'All-Time', icon: '🏆' },
+        ];
+
+        // Generates one card slot's inner HTML
+        const makeCard = (r: { id: string; label: string; en: string; icon: string }, isClone: boolean, cloneKey: string = '') => {
+            const key     = isClone ? cloneKey : r.id;
+            const cardId  = isClone ? '' : `id="hc-card-${r.id}"`;
+            const aria    = isClone
+                ? 'aria-hidden="true" tabindex="-1"'
+                : `role="button" tabindex="0" aria-label="${r.label} No.1视频"`;
+            return `
+            <div class="hc-card${isClone ? ' hc-clone' : ''}" ${cardId} data-range="${r.id}" ${aria}>
+                <div class="hc-card-bg" id="hc-bg-${key}"></div>
+                <div class="hc-card-overlay"></div>
+                <div class="hc-skeleton" id="hc-sk-${key}"></div>
+                <div class="hc-badge">
+                    <span class="hc-badge-icon">${r.icon}</span>
+                    <span class="hc-badge-label">${r.label}</span>
+                    <span class="hc-badge-en">${r.en}</span>
+                </div>
+                <div class="hc-rank-num">No.1</div>
+                <div class="hc-card-content">
+                    <h2 class="hc-title" id="hc-title-${key}"></h2>
+                    <div class="hc-meta">
+                        <span class="hc-stat">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                            <span id="hc-likes-${key}">--</span>
+                        </span>
+                        <span class="hc-stat">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>
+                            <span id="hc-pv-${key}">--</span>
+                        </span>
+                    </div>
+                    <div class="hc-play-btn" aria-hidden="true">
+                        <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                     </div>
                 </div>
-                <div class="hero-play-btn" style="z-index: 4;"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
-            </div>
+            </div>`;
+        };
+
+        // 6 slots: [clone-all | daily | weekly | monthly | all | clone-daily]
+        const cards = [
+            makeCard(ranges[3], true, 'clone-prev'),   // clone of all  → shown when wrapping backward
+            ...ranges.map(r => makeCard(r, false)),     // 4 real cards
+            makeCard(ranges[0], true, 'clone-next'),    // clone of daily → shown when wrapping forward
+        ].join('');
+
+        const dots = ranges.map((r, i) =>
+            `<button class="hc-dot ${i === 0 ? 'active' : ''}" data-idx="${i}" aria-label="切换到${r.label}"></button>`
+        ).join('');
+
+        return `
+            <style>
+                .skeleton-pulse { animation: pulse 1.5s infinite ease-in-out; }
+                @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+                .nav-item { background: transparent; border: none; text-align: left; font-family: inherit; font-size: 1rem; width: 100%; }
+            </style>
+            <section class="hero-carousel" id="hero-carousel" aria-label="四榜精华 Top Videos">
+                <div class="hc-track" id="hc-track">${cards}</div>
+                <div class="hc-indicators" id="hc-indicators">${dots}</div>
+                <button class="hc-arrow hc-arrow-left" id="hc-prev" aria-label="上一个" tabindex="0">
+                    <svg viewBox="0 0 24 24"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6z"/></svg>
+                </button>
+                <button class="hc-arrow hc-arrow-right" id="hc-next" aria-label="下一个" tabindex="0">
+                    <svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+                </button>
+            </section>
         `;
     }
 };
+
