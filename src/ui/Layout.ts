@@ -16,7 +16,21 @@ import { TikTokMode } from '../player/TikTokMode';
 export class Layout {
     private pool: PoolManager;
     private rootElement: HTMLElement | null = null;
-    private player: TikTokMode; 
+    private player: TikTokMode;
+
+    /** Hero carousel: top-3 data per range */
+    private heroData: Map<string, any[]> = new Map();
+    /** Current sub-index (0/1/2) displayed within each hero card */
+    private heroSubIndex: Map<string, number> = new Map();
+    /** Auto-loop timers per range */
+    private heroTimers: Map<string, ReturnType<typeof setInterval>> = new Map();
+    /** Ranges used by hero carousel */
+    private static readonly HERO_RANGES = [
+        { id: 'daily',   label: '日榜' },
+        { id: 'weekly',  label: '周榜' },
+        { id: 'monthly', label: '月榜' },
+        { id: 'all',     label: '总榜' },
+    ];
 
     constructor() {
         this.pool = new PoolManager();
@@ -29,6 +43,7 @@ export class Layout {
         this.createPageStructure();
         this.bindEvents();
         this.player.init();
+        this.player.onClose(() => this.resumeHeroVideos());
         this.bindCarouselEvents();
         this.loadInitialData();
         this.loadHeroCarousel();
@@ -520,83 +535,172 @@ export class Layout {
     }
 
     /**
-     * 独立并行拉取四个榜单 top1，填充 Hero Carousel。
+     * 独立并行拉取四个榜单 top3，填充 Hero Carousel 并启动自动轮播。
      * 使用 PoolManager 的 ApiClient，不影响主数据池。
      */
     private async loadHeroCarousel() {
-        const RANGES = [
-            { id: 'daily',   label: '日榜' },
-            { id: 'weekly',  label: '周榜' },
-            { id: 'monthly', label: '月榜' },
-            { id: 'all',     label: '总榜' },
-        ];
-
         const api = this.pool.getApiClient();
 
-        const fetches = RANGES.map(async (r) => {
+        const fetches = Layout.HERO_RANGES.map(async (r) => {
             try {
                 const data = await api.fetchList({
                     range: r.id,
                     sort: 'favorite',
                     page: 1,
-                    per_page: 1,
+                    per_page: 3,
                 });
-                return { id: r.id, item: data?.items?.[0] || null };
+                const items = data?.items || [];
+                return { id: r.id, items };
             } catch {
-                return { id: r.id, item: null };
+                return { id: r.id, items: [] as any[] };
             }
         });
 
         const results = await Promise.all(fetches);
 
-        results.forEach(({ id, item }) => {
-            const skeleton = document.getElementById(`hc-sk-${id}`);
-            if (skeleton) skeleton.style.display = 'none';
-            if (!item) return;
-
-            const bg = document.getElementById(`hc-bg-${id}`);
-            if (bg) {
-                bg.style.backgroundImage = `url("${escapeCSSUrl(item.thumbnail)}")`;
-                bg.style.opacity = '1';
-            }
-
-            const titleEl = document.getElementById(`hc-title-${id}`);
-            if (titleEl) titleEl.textContent = item.title || `@${item.tweet_account}`;
-
-            const likesEl = document.getElementById(`hc-likes-${id}`);
-            if (likesEl) likesEl.textContent = formatCount(item.favorite);
-
-            const pvEl = document.getElementById(`hc-pv-${id}`);
-            if (pvEl) pvEl.textContent = formatCount(item.pv);
-
-            const card = document.getElementById(`hc-card-${id}`) as HTMLElement | null;
-            if (card) {
-                card.dataset.poolIndex = '0';
-                if (item.url) card.dataset.videoUrl = item.url;
-            }
+        // Store top-3 data and initialise sub-index for each range
+        results.forEach(({ id, items }) => {
+            this.heroData.set(id, items);
+            this.heroSubIndex.set(id, 0);
         });
 
-        // ── After populating real cards, mirror data into the 2 clone slots ──
-        // clone-prev mirrors 'all' (shown when user swipes back from daily)
-        // clone-next mirrors 'daily' (shown when user swipes forward from all)
-        const populate = (key: string, item: any) => {
-            if (!item) return;
-            const sk = document.getElementById(`hc-sk-${key}`);
-            if (sk) sk.style.display = 'none';
-            const bg = document.getElementById(`hc-bg-${key}`);
-            if (bg) { bg.style.backgroundImage = `url("${escapeCSSUrl(item.thumbnail)}")`; bg.style.opacity = '1'; }
-            const t = document.getElementById(`hc-title-${key}`);
-            if (t) t.textContent = item.title || `@${item.tweet_account}`;
-            const l = document.getElementById(`hc-likes-${key}`);
-            if (l) l.textContent = formatCount(item.favorite);
-            const p = document.getElementById(`hc-pv-${key}`);
-            if (p) p.textContent = formatCount(item.pv);
-        };
+        // Populate first item (index 0) into each card
+        results.forEach(({ id, items }) => {
+            if (!items.length) return;
+            this.populateHeroCard(id, items[0], 0);
+        });
 
-        const allData  = results.find(r => r.id === 'all')?.item;
-        const dailyData = results.find(r => r.id === 'daily')?.item;
-        populate('clone-prev', allData);
-        populate('clone-next', dailyData);
+        // Mirror clone slots
+        const allItems  = this.heroData.get('all')  || [];
+        const dailyItems = this.heroData.get('daily') || [];
+        if (allItems.length)  this.populateHeroCard('clone-prev', allItems[0], 0);
+        if (dailyItems.length) this.populateHeroCard('clone-next', dailyItems[0], 0);
+
+        // Start auto-loop for each real card
+        this.startHeroAutoLoop();
+    }
+
+    /**
+     * Populate a hero card slot with a specific item's data.
+     */
+    private populateHeroCard(key: string, item: any, subIndex: number) {
+        if (!item) return;
+
+        const skeleton = document.getElementById(`hc-sk-${key}`);
+        if (skeleton) skeleton.style.display = 'none';
+
+        const bg = document.getElementById(`hc-bg-${key}`);
+        if (bg) {
+            bg.style.backgroundImage = `url("${escapeCSSUrl(item.thumbnail)}")`;
+            bg.style.opacity = '1';
+        }
+
+        const titleEl = document.getElementById(`hc-title-${key}`);
+        if (titleEl) titleEl.textContent = item.title || `@${item.tweet_account}`;
+
+        const likesEl = document.getElementById(`hc-likes-${key}`);
+        if (likesEl) likesEl.textContent = formatCount(item.favorite);
+
+        const pvEl = document.getElementById(`hc-pv-${key}`);
+        if (pvEl) pvEl.textContent = formatCount(item.pv);
+
+        // Update rank numbers
+        const rankEl = document.getElementById(`hc-rank-${key}`);
+        if (rankEl) {
+            const newRank = `No.${subIndex + 1}`;
+            if (rankEl.textContent !== newRank) {
+                rankEl.classList.add('switching');
+                setTimeout(() => {
+                    rankEl.textContent = newRank;
+                    rankEl.classList.remove('switching');
+                }, 200);
+            }
+        }
+        
+        const badgeRankEl = document.getElementById(`hc-badge-rank-${key}`);
+        if (badgeRankEl) {
+            badgeRankEl.textContent = `No.0${subIndex + 1}`;
+        }
+
+        // Store current sub-index on the card element for click handlers
+        const card = document.getElementById(`hc-card-${key}`) as HTMLElement | null;
+        if (card) {
+            card.dataset.heroSubIndex = String(subIndex);
+            if (item.url) card.dataset.videoUrl = item.url;
+        }
+    }
+
+    /**
+     * Start auto-loop: each range cycles top1→top2→top3 every 10 seconds.
+     * Each item plays its video for 10 seconds.
+     */
+    private startHeroAutoLoop() {
+        // Clear existing timers
+        this.heroTimers.forEach(t => clearInterval(t));
+        this.heroTimers.clear();
+
+        const INTERVAL = 10_000; // 10 seconds per item
+
+        for (const range of Layout.HERO_RANGES) {
+            const items = this.heroData.get(range.id);
+            if (!items || items.length <= 1) continue; // No rotation needed for 0 or 1 item
+
+            // Start playing first video immediately
+            this.playHeroVideo(range.id, items[0]);
+
+            const timer = setInterval(() => {
+                const currentSub = this.heroSubIndex.get(range.id) ?? 0;
+                const nextSub = (currentSub + 1) % items.length;
+                this.heroSubIndex.set(range.id, nextSub);
+
+                const nextItem = items[nextSub];
+                this.populateHeroCard(range.id, nextItem, nextSub);
+                this.playHeroVideo(range.id, nextItem);
+
+                // Also sync clone card if this range is daily or all
+                if (range.id === 'all') {
+                    this.populateHeroCard('clone-prev', nextItem, nextSub);
+                    this.playHeroCloneVideo('clone-prev', nextItem);
+                } else if (range.id === 'daily') {
+                    this.populateHeroCard('clone-next', nextItem, nextSub);
+                    this.playHeroCloneVideo('clone-next', nextItem);
+                }
+            }, INTERVAL);
+
+            this.heroTimers.set(range.id, timer);
+        }
+    }
+
+    /**
+     * Play 10-second video preview on a real hero card.
+     */
+    private playHeroVideo(rangeId: string, item: any) {
+        const video = document.getElementById(`hc-video-${rangeId}`) as HTMLVideoElement | null;
+        if (!video || !item?.url) return;
+
+        video.src = item.url;
+        video.currentTime = 0;
+        video.muted = true;
+        video.playsInline = true;
+        video.load();
+        video.classList.add('playing');
+        video.play().catch(() => {/* autoplay blocked */});
+    }
+
+    /**
+     * Play video on clone cards (mirror of real).
+     */
+    private playHeroCloneVideo(cloneKey: string, item: any) {
+        const video = document.getElementById(`hc-video-${cloneKey}`) as HTMLVideoElement | null;
+        if (!video || !item?.url) return;
+
+        video.src = item.url;
+        video.currentTime = 0;
+        video.muted = true;
+        video.playsInline = true;
+        video.load();
+        video.classList.add('playing');
+        video.play().catch(() => {});
     }
 
     /** Infinite-loop carousel — 6 slots: [clone-all | d | w | m | a | clone-daily] */
@@ -668,13 +772,76 @@ export class Layout {
             }
         }, { passive: true });
 
-        // Click on real carousel cards only → open player
+        // Click on real carousel cards → switch to that ranking and open player
         document.getElementById('hero-carousel')?.addEventListener('click', (e) => {
             const card = (e.target as HTMLElement).closest('.hc-card') as HTMLElement | null;
             if (!card || card.classList.contains('hc-clone')) return;
-            const idx = card.dataset.poolIndex;
-            if (idx !== undefined) this.player.openModal(parseInt(idx));
+
+            // Prevent clicks on nav arrows
+            if ((e.target as HTMLElement).closest('.hc-arrow')) return;
+
+            const range = card.dataset.range;
+            if (!range) return;
+
+            const subIndex = parseInt(card.dataset.heroSubIndex || '0');
+            this.handleHeroCardClick(range, subIndex);
         });
+    }
+
+    /**
+     * Hero card click handler:
+     * 1. Switch main grid + section title to the clicked card's range
+     * 2. Open TikTok player at the sub-index position (top1/top2/top3)
+     */
+    private async handleHeroCardClick(range: string, startIndex: number) {
+        log(`Hero card clicked: range=${range}, startIndex=${startIndex}`);
+
+        // Pause all hero videos while in player
+        this.pauseAllHeroVideos();
+
+        // Sync range UI (sidebar + mobile dropdown)
+        this.syncRangeUI(range);
+
+        // Switch main data pool to this range
+        await this.applyFilters({ range });
+
+        // Open player at the correct sub-index
+        this.player.openModal(startIndex);
+    }
+
+    /**
+     * Pause all hero card preview videos.
+     */
+    private pauseAllHeroVideos() {
+        for (const range of Layout.HERO_RANGES) {
+            const video = document.getElementById(`hc-video-${range.id}`) as HTMLVideoElement | null;
+            if (video) video.pause();
+        }
+        // Also pause clones
+        const clonePrev = document.getElementById('hc-video-clone-prev') as HTMLVideoElement | null;
+        const cloneNext = document.getElementById('hc-video-clone-next') as HTMLVideoElement | null;
+        if (clonePrev) clonePrev.pause();
+        if (cloneNext) cloneNext.pause();
+
+        // Stop auto-loop timers
+        this.heroTimers.forEach(t => clearInterval(t));
+        this.heroTimers.clear();
+    }
+
+    /**
+     * Resume hero video auto-loop after player closes.
+     */
+    private resumeHeroVideos() {
+        // Resume current video for each range
+        for (const range of Layout.HERO_RANGES) {
+            const items = this.heroData.get(range.id);
+            const subIdx = this.heroSubIndex.get(range.id) ?? 0;
+            if (items && items[subIdx]) {
+                this.playHeroVideo(range.id, items[subIdx]);
+            }
+        }
+        // Restart auto-loop timers
+        this.startHeroAutoLoop();
     }
 
     private renderGrid(append: boolean = false) {

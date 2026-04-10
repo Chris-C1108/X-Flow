@@ -18,6 +18,7 @@ export class TikTokMode {
     private bookmarks: Set<string>;
     private preloadTimer: ReturnType<typeof setTimeout> | null = null;
     private isDraggingProgress: boolean = false;
+    private onCloseCallback: (() => void) | null = null;
     
     private progressFill: HTMLElement;
     private timeText: HTMLElement;
@@ -348,6 +349,12 @@ export class TikTokMode {
         this.isOpen = false;
         this.modal.style.display = 'none';
         this.pauseAll();
+        if (this.onCloseCallback) this.onCloseCallback();
+    }
+
+    /** Register a callback invoked when the player modal is closed. */
+    public onClose(cb: () => void) {
+        this.onCloseCallback = cb;
     }
 
     private navigate(delta: number) {

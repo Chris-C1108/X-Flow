@@ -83,14 +83,16 @@ export const Components = {
             return `
             <div class="hc-card${isClone ? ' hc-clone' : ''}" ${cardId} data-range="${r.id}" ${aria}>
                 <div class="hc-card-bg" id="hc-bg-${key}"></div>
+                <video class="hc-card-video" id="hc-video-${key}" muted playsinline preload="none"></video>
                 <div class="hc-card-overlay"></div>
                 <div class="hc-skeleton" id="hc-sk-${key}"></div>
                 <div class="hc-badge">
                     <span class="hc-badge-icon">${r.icon}</span>
                     <span class="hc-badge-label">${r.label}</span>
                     <span class="hc-badge-en">${r.en}</span>
+                    <span class="hc-badge-rank" id="hc-badge-rank-${key}">No.01</span>
                 </div>
-                <div class="hc-rank-num">No.1</div>
+                <div class="hc-rank-num" id="hc-rank-${key}">No.1</div>
                 <div class="hc-card-content">
                     <h2 class="hc-title" id="hc-title-${key}"></h2>
                     <div class="hc-meta">

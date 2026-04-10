@@ -79,6 +79,7 @@
         .hc-badge-icon { font-size: 1rem; line-height: 1; }
         .hc-badge-label { font-family: var(--font-display); font-size: 0.9rem; font-weight: 700; color: #fff; letter-spacing: 0.02em; }
         .hc-badge-en { font-family: var(--font-body); font-size: 0.72rem; font-weight: 500; color: rgba(255,255,255,0.5); letter-spacing: 0.06em; text-transform: uppercase; }
+        .hc-badge-rank { font-family: var(--font-display); font-size: 0.85rem; font-weight: 800; color: var(--theme-accent); margin-left: 4px; padding-left: 10px; border-left: 1px solid rgba(255,255,255,0.2); }
         
         /* Rank number faint watermark */
         .hc-rank-num { position: absolute; top: 1rem; right: 1.5rem; font-family: var(--font-display); font-size: 4rem; font-weight: 800; color: rgba(255,255,255,0.1); z-index: 2; line-height: 1; letter-spacing: -0.04em; pointer-events: none; }
@@ -108,6 +109,17 @@
 
         /* Thin separator between cards */
         .hc-card + .hc-card { border-left: 1px solid rgba(255,255,255,0.05); }
+
+        /* Auto-loop video within hero cards */
+        .hc-card-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; opacity: 0; transition: opacity 0.6s ease; pointer-events: none; }
+        .hc-card-video.playing { opacity: 1; z-index: 0; }
+        .hc-card-bg { z-index: 0; }
+        .hc-card-overlay { z-index: 1; }
+
+        /* Rank number fade transition */
+        .hc-rank-num { transition: opacity 0.3s ease; }
+        .hc-rank-num.switching { animation: rankPulse 0.4s var(--ease-smooth); }
+        @keyframes rankPulse { 0% { opacity: 1; transform: scale(1); } 30% { opacity: 0; transform: scale(0.85); } 70% { opacity: 0; transform: scale(1.15); } 100% { opacity: 1; transform: scale(1); } }
 
         /* Hover-to-play video overlay on media cards */
         .card-hover-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 5; border-radius: inherit; background: #000; opacity: 0; transition: opacity 0.4s ease; pointer-events: none; }
