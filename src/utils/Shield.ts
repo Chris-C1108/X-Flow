@@ -2,74 +2,188 @@ export class Shield {
     public static activate() {
         console.log('🛡️ [X-Flow Shield] 启动终极反劫持防御层...');
 
-        // 1. 修复 iOS Safari 在 document-start 阶段 document.baseURI 为 null 导致 Vite 解析崩溃的底层 Bug
-        const OriginalURL = window.URL;
-        window.URL = new Proxy(OriginalURL, {
-            // @ts-ignore
-            construct(target, args) {
-                // 如果 base 参数被显式传入了 null（原生的 Safari 会抛出解析异常），跳过 null 参数
-                if (args.length > 1 && args[1] === null) {
-                    return new target(args[0]);
-                }
+        // ─────────────────────────────────────────────────────────
+        // Fix 0: iOS Safari document.baseURI null 导致 Vite URL 构造崩溃
+        // ─────────────────────────────────────────────────────────
+        try {
+            const OriginalURL = window.URL;
+            window.URL = new Proxy(OriginalURL, {
                 // @ts-ignore
-                return new target(...args);
-            }
-        });
+                construct(target, args) {
+                    if (args.length > 1 && (args[1] === null || args[1] === undefined)) {
+                        return new target(args[0]);
+                    }
+                    // @ts-ignore
+                    return new target(...args);
+                }
+            });
+        } catch (e) {
+            console.warn('🛡️ [X-Flow Shield] URL Proxy 安装失败（可忽略）:', e);
+        }
 
-        // 2. 拦截底层 addEventListener，禁止原网站在 window 和 document 上绑定点击跳转
+        // ─────────────────────────────────────────────────────────
+        // Fix 1: 锁死 window.location — 拦截 Tab-under 核心手段
+        //   恶意代码路径: location.href = "..." / location.replace("...")
+        //   注意: 必须用 Object.defineProperty 覆盖，赋值拦截 setter 即可
+        // ─────────────────────────────────────────────────────────
+        try {
+            const originalLocation = window.location;
+            const ownDescriptor = Object.getOwnPropertyDescriptor(window, 'location');
+            // 仅在 location 可被重新定义时操作（Chrome/Firefox 通常不允许，Safari 有时可以）
+            if (!ownDescriptor || ownDescriptor.configurable) {
+                Object.defineProperty(window, 'location', {
+                    get: () => originalLocation,
+                    set: (v: string) => {
+                        console.log('🛡️ [X-Flow Shield] 拦截 window.location 赋值:', v);
+                        // 不执行跳转
+                    },
+                    configurable: false,
+                });
+            }
+        } catch (e) {
+            console.warn('🛡️ [X-Flow Shield] location defineProperty 失败，尝试 href/replace 拦截');
+        }
+
+        // 无论 defineProperty 是否成功，都补丁 location.href setter + location.replace/assign
+        try {
+            const proto = Object.getPrototypeOf(window.location);
+            const hrefDesc = Object.getOwnPropertyDescriptor(proto, 'href') ||
+                             Object.getOwnPropertyDescriptor(window.location, 'href');
+
+            if (hrefDesc && hrefDesc.set) {
+                const originalHrefSetter = hrefDesc.set;
+                Object.defineProperty(proto, 'href', {
+                    get: hrefDesc.get,
+                    set(v: string) {
+                        console.log('🛡️ [X-Flow Shield] 拦截 location.href 设置:', v);
+                        // 不跳转
+                    },
+                    configurable: true,
+                });
+            }
+        } catch (e) { /* ignore */ }
+
+        try {
+            const noop = (url?: string) => {
+                console.log('🛡️ [X-Flow Shield] 拦截 location.replace/assign:', url);
+            };
+            window.location.replace = noop as typeof window.location.replace;
+            window.location.assign  = noop as typeof window.location.assign;
+        } catch (e) { /* iOS 可能不允许重写，忽略 */ }
+
+        // ─────────────────────────────────────────────────────────
+        // Fix 2: 拦截 addEventListener (目标: window, document, body)
+        //   + 拦截 on* 属性直接赋值（addEventListener 无法覆盖这条路径）
+        // ─────────────────────────────────────────────────────────
+        const BLOCKED_EVENTS = new Set([
+            'click', 'mousedown', 'mouseup',
+            'touchstart', 'touchend', 'touchmove',
+            'pointerdown', 'pointerup',
+        ]);
+
         const originalAddEventListener = EventTarget.prototype.addEventListener;
         EventTarget.prototype.addEventListener = function(type, listener, options) {
-            // 如果是拦截重点对象（window, document），且事件类型是点击或触摸
-            if ((this === window || this === document) && 
-                ['click', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'pointerdown'].includes(type as string)) {
-                
+            const isGlobalTarget = this === window || this === document || this === document.body;
+            if (isGlobalTarget && BLOCKED_EVENTS.has(type as string)) {
                 console.log(`🛡️ [X-Flow Shield] 阻止全局恶意事件监听绑定: ${type}`);
-                return; 
+                return;
             }
-            // 放行正常事件
             return originalAddEventListener.call(this, type, listener, options);
         };
 
-        // 2. 废掉流氓网站常用的隐式弹窗和跳转 API
-        window.open = function() {
-            console.log("🛡️ [X-Flow Shield] 拦截 window.open 弹窗...");
-            return null; 
+        // 拦截 on* 属性赋值 (e.g. window.onclick = ..., document.onmousedown = ...)
+        Shield._blockOnEventProperties(window);
+        Shield._blockOnEventProperties(document);
+        // body 可能尚未存在，待 DOM ready 后补上
+        const bodyBlockOnce = () => {
+            if (document.body) {
+                Shield._blockOnEventProperties(document.body);
+            }
+        };
+        document.addEventListener('DOMContentLoaded', bodyBlockOnce, { once: true, capture: true });
+        setTimeout(bodyBlockOnce, 0);
+
+        // ─────────────────────────────────────────────────────────
+        // Fix 3: 废掉 window.open (维持原有逻辑，Tab-under 第一步)
+        // ─────────────────────────────────────────────────────────
+        window.open = function(url?: string | URL) {
+            console.log('🛡️ [X-Flow Shield] 拦截 window.open:', url);
+            return null;
         };
 
-        // 3. 彻底禁用 beforeunload 恶意强留/重定向尝试
-        window.addEventListener('beforeunload', (e) => {
-            console.log("🛡️ [X-Flow Shield] 拦截页面离开/重定向尝试");
-            // e.preventDefault();
+        // ─────────────────────────────────────────────────────────
+        // Fix 4: 拦截跨框架 postMessage 的 null target 报错
+        //   日志: TypeError: null is not an object (evaluating 't.postMessage')
+        //   原因: 宿主广告 iframe 已被移除，广告代码仍尝试调用 postMessage
+        // ─────────────────────────────────────────────────────────
+        try {
+            const originalPostMessage = window.postMessage.bind(window);
+            window.postMessage = function(message: unknown, targetOrigin: string, transfer?: Transferable[]) {
+                if (targetOrigin === null || targetOrigin === undefined) {
+                    console.warn('🛡️ [X-Flow Shield] 拦截 null targetOrigin postMessage');
+                    return;
+                }
+                return originalPostMessage(message, targetOrigin, transfer ?? []);
+            };
+        } catch (e) { /* ignore */ }
+
+        // ─────────────────────────────────────────────────────────
+        // Fix 5: MutationObserver 清理动态注入的全屏透明劫持层
+        // ─────────────────────────────────────────────────────────
+        const observer = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                for (const node of mutation.addedNodes) {
+                    const el = node as HTMLElement;
+                    if (!el || !el.tagName) continue;
+                    if (el.tagName !== 'DIV' && el.tagName !== 'A' && el.tagName !== 'SPAN') continue;
+                    if (el.id === 'xflow-app-root') continue;
+
+                    try {
+                        const style = window.getComputedStyle(el);
+                        const z = parseInt(style.zIndex || '0');
+                        const w = parseFloat(style.width || '0');
+                        const isFullscreen = (style.position === 'fixed' || style.position === 'absolute')
+                            && z > 9000
+                            && w > window.innerWidth * 0.8;
+                        if (isFullscreen) {
+                            console.log('🛡️ [X-Flow Shield] 移除全屏透明劫持层', el.tagName, el.id, el.className);
+                            el.remove();
+                        }
+                    } catch (_) {
+                        // getComputedStyle on detached nodes may throw
+                    }
+                }
+            }
         });
 
-        // 4. 清理可能已经存在的透明全屏遮罩层 (Clickjacker)
-        const observer = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                mutation.addedNodes.forEach((node) => {
-                    const el = node as HTMLElement;
-                    if (el && (el.tagName === 'DIV' || el.tagName === 'A')) {
-                        try {
-                            const style = window.getComputedStyle(el);
-                            // 发现全屏透明元素，直接删掉
-                            if (style.position === 'absolute' || style.position === 'fixed') {
-                                if (parseInt(style.zIndex || '0') > 9000 && parseInt(style.width || '0') > window.innerWidth * 0.8) {
-                                    if (el.id !== 'xflow-app-root') {
-                                        console.log("🛡️ [X-Flow Shield] 移除全屏透明劫持层", el);
-                                        el.remove();
-                                    }
-                                }
-                            }
-                        } catch (e) {
-                            // ignore GetComputedStyle throws on detached nodes
-                        }
-                    }
-                });
-            });
-        });
-        
-        // 页面加载后开始监视 DOM 变化，防止广告动态注入
         if (document.documentElement) {
             observer.observe(document.documentElement, { childList: true, subtree: true });
+        }
+
+        console.log('🛡️ [X-Flow Shield] 防御层全部就位。');
+    }
+
+    /**
+     * 通过 defineProperty 拦截目标对象的 on* 属性直接赋值
+     * （此路径绕过了 addEventListener 劫持）
+     */
+    private static _blockOnEventProperties(target: EventTarget) {
+        const BLOCKED_ON: string[] = [
+            'onclick', 'onmousedown', 'onmouseup',
+            'ontouchstart', 'ontouchend', 'ontouchmove',
+            'onpointerdown', 'onpointerup',
+        ];
+        for (const propName of BLOCKED_ON) {
+            try {
+                Object.defineProperty(target, propName, {
+                    get: () => null,
+                    set: (v) => {
+                        console.log(`🛡️ [X-Flow Shield] 拦截 ${propName} 属性直接赋值`);
+                        // 丢弃赋值，不设置处理器
+                    },
+                    configurable: true,
+                });
+            } catch (_) { /* 某些属性在 strict 模式下无法重定义 */ }
         }
     }
 }

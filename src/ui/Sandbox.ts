@@ -32,14 +32,23 @@ export class Sandbox {
         try {
             const s = document.createElement('style');
             s.id = 'xflow-hide-fouc';
-            s.textContent = 'html{display:none!important}';
+            // ⚠️ 不用 display:none 隐藏整个 html — 那会导致 1-2s 白屏
+            // 改为：用黑色伪幕覆盖可见区域（视觉上无白屏），不阻塞渲染树
+            s.textContent = [
+                'html,body{background:#0D0D12!important;overflow:hidden!important}',
+                'body>*:not(#xflow-app-root){opacity:0!important;pointer-events:none!important}',
+            ].join('');
             (document.documentElement || document.head || document.body)?.appendChild(s);
         } catch { /* DOM not ready yet */ }
 
         // Phase 2: React 共存防御 - 选择性追加，延迟执行，防止报 #418 错误
         const doReplace = () => {
             if (this.appRoot) return; // 避免重复执行
-            
+
+            // 立即移除 FOUC 样式幕布（此时 X-Flow 容器将接管视觉）
+            const foucEl = document.getElementById('xflow-hide-fouc');
+            if (foucEl) foucEl.remove();
+
             // 隐藏原站所有直系节点，而不是销毁 (防止 React 水合报错)
             Array.from(document.body.children).forEach(child => {
                 if (child.id !== 'xflow-app-root' && child.id !== 'xflow-hide-fouc' && child.tagName !== 'SCRIPT' && child.tagName !== 'STYLE') {
@@ -93,8 +102,7 @@ export class Sandbox {
                 document.head.appendChild(fontLinks.firstChild);
             }
             
-            const foucElement = document.getElementById('xflow-hide-fouc');
-            if (foucElement) foucElement.remove();
+            // FOUC 样式已在函数顶部移除，此处不再重复
 
             // 启动业务
             log('Sandbox: DOM 接管完成，干净环境就绪');
@@ -103,16 +111,17 @@ export class Sandbox {
         };
 
         const readyAndReplace = () => {
-            // 利用 setTimeout 给 React 水合留出缓冲时间
-            setTimeout(doReplace, 1500);
+            // 延迟 0ms：将执行推入下一个事件循环，让 React 水合先完成一帧
+            // 0ms vs 1500ms：视觉上消除白屏，React 兼容性不变
+            setTimeout(doReplace, 0);
         };
 
         if (document.readyState === 'complete' || document.readyState === 'interactive') {
             readyAndReplace();
         } else {
             window.addEventListener('load', readyAndReplace);
-            // 兜底机制
-            setTimeout(readyAndReplace, 3000);
+            // 兜底机制（缩短至 800ms，避免长时间白屏）
+            setTimeout(readyAndReplace, 800);
         }
     }
 

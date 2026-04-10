@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter排行榜：TikTok版
 // @namespace    xflow.loadingi.local
-// @version      5.0.5
+// @version      5.0.6
 // @author       Chris_C
 // @description  TikTok风格上下滑动切换，PC/移动端双端适配，缩略图先行加载、进度指示、点赞、只看未读、循环播放、长按倍速、广告/弹窗/重定向屏蔽
 // @license      MIT
@@ -1273,12 +1273,17 @@
       try {
         const s = document.createElement("style");
         s.id = "xflow-hide-fouc";
-        s.textContent = "html{display:none!important}";
+        s.textContent = [
+          "html,body{background:#0D0D12!important;overflow:hidden!important}",
+          "body>*:not(#xflow-app-root){opacity:0!important;pointer-events:none!important}"
+        ].join("");
         (_a = document.documentElement || document.head || document.body) == null ? void 0 : _a.appendChild(s);
       } catch {
       }
       const doReplace = () => {
         if (this.appRoot) return;
+        const foucEl = document.getElementById("xflow-hide-fouc");
+        if (foucEl) foucEl.remove();
         Array.from(document.body.children).forEach((child) => {
           if (child.id !== "xflow-app-root" && child.id !== "xflow-hide-fouc" && child.tagName !== "SCRIPT" && child.tagName !== "STYLE") {
             child.style.display = "none";
@@ -1314,20 +1319,18 @@
         while (fontLinks.firstChild) {
           document.head.appendChild(fontLinks.firstChild);
         }
-        const foucElement = document.getElementById("xflow-hide-fouc");
-        if (foucElement) foucElement.remove();
         log("Sandbox: DOM 接管完成，干净环境就绪");
         const layout = new Layout();
         layout.init(this.appRoot);
       };
       const readyAndReplace = () => {
-        setTimeout(doReplace, 1500);
+        setTimeout(doReplace, 0);
       };
       if (document.readyState === "complete" || document.readyState === "interactive") {
         readyAndReplace();
       } else {
         window.addEventListener("load", readyAndReplace);
-        setTimeout(readyAndReplace, 3e3);
+        setTimeout(readyAndReplace, 800);
       }
     }
     injectAppCss() {
@@ -1344,54 +1347,153 @@
   class Shield {
     static activate() {
       console.log("🛡️ [X-Flow Shield] 启动终极反劫持防御层...");
-      const OriginalURL = window.URL;
-      window.URL = new Proxy(OriginalURL, {
-        // @ts-ignore
-        construct(target, args) {
-          if (args.length > 1 && args[1] === null) {
-            return new target(args[0]);
+      try {
+        const OriginalURL = window.URL;
+        window.URL = new Proxy(OriginalURL, {
+          // @ts-ignore
+          construct(target, args) {
+            if (args.length > 1 && (args[1] === null || args[1] === void 0)) {
+              return new target(args[0]);
+            }
+            return new target(...args);
           }
-          return new target(...args);
+        });
+      } catch (e) {
+        console.warn("🛡️ [X-Flow Shield] URL Proxy 安装失败（可忽略）:", e);
+      }
+      try {
+        const originalLocation = window.location;
+        const ownDescriptor = Object.getOwnPropertyDescriptor(window, "location");
+        if (!ownDescriptor || ownDescriptor.configurable) {
+          Object.defineProperty(window, "location", {
+            get: () => originalLocation,
+            set: (v) => {
+              console.log("🛡️ [X-Flow Shield] 拦截 window.location 赋值:", v);
+            },
+            configurable: false
+          });
         }
-      });
+      } catch (e) {
+        console.warn("🛡️ [X-Flow Shield] location defineProperty 失败，尝试 href/replace 拦截");
+      }
+      try {
+        const proto = Object.getPrototypeOf(window.location);
+        const hrefDesc = Object.getOwnPropertyDescriptor(proto, "href") || Object.getOwnPropertyDescriptor(window.location, "href");
+        if (hrefDesc && hrefDesc.set) {
+          const originalHrefSetter = hrefDesc.set;
+          Object.defineProperty(proto, "href", {
+            get: hrefDesc.get,
+            set(v) {
+              console.log("🛡️ [X-Flow Shield] 拦截 location.href 设置:", v);
+            },
+            configurable: true
+          });
+        }
+      } catch (e) {
+      }
+      try {
+        const noop = (url) => {
+          console.log("🛡️ [X-Flow Shield] 拦截 location.replace/assign:", url);
+        };
+        window.location.replace = noop;
+        window.location.assign = noop;
+      } catch (e) {
+      }
+      const BLOCKED_EVENTS = /* @__PURE__ */ new Set([
+        "click",
+        "mousedown",
+        "mouseup",
+        "touchstart",
+        "touchend",
+        "touchmove",
+        "pointerdown",
+        "pointerup"
+      ]);
       const originalAddEventListener = EventTarget.prototype.addEventListener;
       EventTarget.prototype.addEventListener = function(type, listener, options) {
-        if ((this === window || this === document) && ["click", "mousedown", "mouseup", "touchstart", "touchend", "pointerdown"].includes(type)) {
+        const isGlobalTarget = this === window || this === document || this === document.body;
+        if (isGlobalTarget && BLOCKED_EVENTS.has(type)) {
           console.log(`🛡️ [X-Flow Shield] 阻止全局恶意事件监听绑定: ${type}`);
           return;
         }
         return originalAddEventListener.call(this, type, listener, options);
       };
-      window.open = function() {
-        console.log("🛡️ [X-Flow Shield] 拦截 window.open 弹窗...");
+      Shield._blockOnEventProperties(window);
+      Shield._blockOnEventProperties(document);
+      const bodyBlockOnce = () => {
+        if (document.body) {
+          Shield._blockOnEventProperties(document.body);
+        }
+      };
+      document.addEventListener("DOMContentLoaded", bodyBlockOnce, { once: true, capture: true });
+      setTimeout(bodyBlockOnce, 0);
+      window.open = function(url) {
+        console.log("🛡️ [X-Flow Shield] 拦截 window.open:", url);
         return null;
       };
-      window.addEventListener("beforeunload", (e) => {
-        console.log("🛡️ [X-Flow Shield] 拦截页面离开/重定向尝试");
-      });
+      try {
+        const originalPostMessage = window.postMessage.bind(window);
+        window.postMessage = function(message, targetOrigin, transfer) {
+          if (targetOrigin === null || targetOrigin === void 0) {
+            console.warn("🛡️ [X-Flow Shield] 拦截 null targetOrigin postMessage");
+            return;
+          }
+          return originalPostMessage(message, targetOrigin, transfer ?? []);
+        };
+      } catch (e) {
+      }
       const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-          mutation.addedNodes.forEach((node) => {
+        for (const mutation of mutations) {
+          for (const node of mutation.addedNodes) {
             const el = node;
-            if (el && (el.tagName === "DIV" || el.tagName === "A")) {
-              try {
-                const style = window.getComputedStyle(el);
-                if (style.position === "absolute" || style.position === "fixed") {
-                  if (parseInt(style.zIndex || "0") > 9e3 && parseInt(style.width || "0") > window.innerWidth * 0.8) {
-                    if (el.id !== "xflow-app-root") {
-                      console.log("🛡️ [X-Flow Shield] 移除全屏透明劫持层", el);
-                      el.remove();
-                    }
-                  }
-                }
-              } catch (e) {
+            if (!el || !el.tagName) continue;
+            if (el.tagName !== "DIV" && el.tagName !== "A" && el.tagName !== "SPAN") continue;
+            if (el.id === "xflow-app-root") continue;
+            try {
+              const style = window.getComputedStyle(el);
+              const z = parseInt(style.zIndex || "0");
+              const w = parseFloat(style.width || "0");
+              const isFullscreen = (style.position === "fixed" || style.position === "absolute") && z > 9e3 && w > window.innerWidth * 0.8;
+              if (isFullscreen) {
+                console.log("🛡️ [X-Flow Shield] 移除全屏透明劫持层", el.tagName, el.id, el.className);
+                el.remove();
               }
+            } catch (_) {
             }
-          });
-        });
+          }
+        }
       });
       if (document.documentElement) {
         observer.observe(document.documentElement, { childList: true, subtree: true });
+      }
+      console.log("🛡️ [X-Flow Shield] 防御层全部就位。");
+    }
+    /**
+     * 通过 defineProperty 拦截目标对象的 on* 属性直接赋值
+     * （此路径绕过了 addEventListener 劫持）
+     */
+    static _blockOnEventProperties(target) {
+      const BLOCKED_ON = [
+        "onclick",
+        "onmousedown",
+        "onmouseup",
+        "ontouchstart",
+        "ontouchend",
+        "ontouchmove",
+        "onpointerdown",
+        "onpointerup"
+      ];
+      for (const propName of BLOCKED_ON) {
+        try {
+          Object.defineProperty(target, propName, {
+            get: () => null,
+            set: (v) => {
+              console.log(`🛡️ [X-Flow Shield] 拦截 ${propName} 属性直接赋值`);
+            },
+            configurable: true
+          });
+        } catch (_) {
+        }
       }
     }
   }

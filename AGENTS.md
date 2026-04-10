@@ -102,8 +102,8 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 07 | media query, display: none, mobile button, order | CSS base styles MUST be defined BEFORE @media queries to avoid cascade overriding | [css_declaration_order_cascading.md](.agents/knowledge/css_declaration_order_cascading.md) |
 | 09 | blank screen, white, FOUC, error, finally | Always remove FOUC hide in `finally` block or error state; don't wait for API success | [api_error_fouc_protection.md](.agents/knowledge/api_error_fouc_protection.md) |
 | 10 | range, daily, all, 日榜, 总榜, same data | API `range=daily` is INVALID — daily = empty string `""`; use RANGE_MAP in ApiClient | [api_range_param_mapping.md](.agents/knowledge/api_range_param_mapping.md) |
-| 11 | hydration, React, error 418, replace | Add AppRoot via CSS hide-and-append + setTimeout to avoid breaking React root | [react_hydration_coexistence.md](.agents/knowledge/react_hydration_coexistence.md) |
-| 12 | redirect, clickjacking, ad, window | Pre-hijack EventTarget prototype to block invisible ad overlays & global redirects | [global_clickjacking_defense.md](.agents/knowledge/global_clickjacking_defense.md) |
+| 11 | hydration, React, error 418, replace, **white screen, blank, FOUC, display none, 白屏, 1500ms** | Use `background:#0D0D12` mask (not `html{display:none}`) + `setTimeout(0)` to fix both React compat & white screen | [react_hydration_coexistence.md](.agents/knowledge/react_hydration_coexistence.md) |
+| 12 | redirect, clickjacking, ad, window, **Tab-under, location.href, location.replace, onclick=, onmousedown=, postMessage null** | Intercept `addEventListener` + `on*` property setters + `location.replace/assign/href` setter — must cover all 3 paths | [global_clickjacking_defense.md](.agents/knowledge/global_clickjacking_defense.md) |
 
 ### 🛠️ Build & Syntax
 
