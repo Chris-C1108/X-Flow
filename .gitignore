@@ -27,3 +27,5 @@ POST.md
 ! .agents/AGENTS.md
 ! .agents/dev-docs/
 ! .agents/todo/
+# Added by code-review-graph
+.code-review-graph/

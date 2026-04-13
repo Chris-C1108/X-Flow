@@ -44,42 +44,44 @@ export class TikTokMode {
         this.uiLayer = document.createElement('div');
         this.uiLayer.style.cssText = 'position: absolute; inset: 0; z-index: 20; pointer-events: none;';
         this.uiLayer.innerHTML = `
-            <div class="tm-topbar" style="pointer-events: auto; position: absolute; top:0; left:0; right:0; padding:12px; display:flex; justify-content:space-between; z-index: 20;">
-                <div class="tm-pill" id="tm-count" style="background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 20px;" aria-live="polite">1 / 1</div>
-                <button type="button" class="tm-btn" id="tm-close-btn" style="background: rgba(0,0,0,0.5); border: none; color: #fff; border-radius: 50%; width: 36px; height: 36px; cursor: pointer;" aria-label="Close" tabindex="0">X</button>
-            </div>
-            <div class="tm-info" style="pointer-events: auto; position: absolute; bottom: 80px; left: 16px; right: 80px; z-index: 20;">
-                <h2 class="tm-title" id="tm-title" style="font-size: 15px; font-weight: bold; text-shadow: 0 1px 4px rgba(0,0,0,0.8); margin: 0;"></h2>
-            </div>
-            <div class="tm-volume-wrap" id="tm-volume-wrap" style="pointer-events: auto; position: absolute; bottom: 54px; right: 16px; z-index: 25; display: flex; align-items: center; gap: 8px;">
-                <button type="button" class="tm-vol-btn" id="tm-vol-btn" aria-label="Toggle mute" style="background: rgba(0,0,0,0.4); backdrop-filter: blur(8px); border: none; color: #fff; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
-                    <svg id="tm-vol-icon" viewBox="0 0 24 24" width="18" height="18" fill="#fff"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+            <div class="tm-topbar">
+                <div class="tm-pill" id="tm-count" aria-live="polite">1 / 1</div>
+                <button type="button" class="tm-btn" id="tm-close-btn" aria-label="Close" tabindex="0">
+                    <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
                 </button>
-                <div class="tm-vol-slider-wrap" style="width: 80px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; cursor: pointer; position: relative;">
-                    <div class="tm-vol-fill" id="tm-vol-fill" style="height: 100%; background: #fff; border-radius: 2px; width: 70%; pointer-events: none;"></div>
+            </div>
+            <div class="tm-info">
+                <h2 class="tm-title" id="tm-title"></h2>
+            </div>
+            <div class="tm-volume-wrap" id="tm-volume-wrap">
+                <button type="button" class="tm-vol-btn" id="tm-vol-btn" aria-label="Toggle mute">
+                    <svg id="tm-vol-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+                </button>
+                <div class="tm-vol-slider-wrap">
+                    <div class="tm-vol-fill" id="tm-vol-fill"></div>
                 </div>
             </div>
-            <div class="tm-progress-wrap" id="tm-progress-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0" style="pointer-events: auto; position: absolute; bottom: 20px; left: 16px; right: 16px; z-index: 20; display:flex; align-items:center; gap:10px;">
-                <div class="tm-progress" style="flex:1; height:4px; background:rgba(255,255,255,0.3); border-radius:2px; position:relative;">
-                    <div class="tm-progress-fill" id="tm-progress-fill" style="width:0%; height:100%; background:#fff; border-radius:2px;"></div>
+            <div class="tm-progress-wrap" id="tm-progress-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
+                <div class="tm-progress">
+                    <div class="tm-progress-fill" id="tm-progress-fill"></div>
                 </div>
-                <div class="tm-time" id="tm-time" style="font-size: 12px; font-variant-numeric: tabular-nums;">0:00 / 0:00</div>
+                <div class="tm-time" id="tm-time">0:00 / 0:00</div>
             </div>
-            <div class="tm-actions" id="tm-actions" style="pointer-events: auto;" role="group" aria-label="Video actions">
-                <button type="button" class="tm-action like" id="tm-like-btn" aria-label="Like" tabindex="0" style="background:transparent; border:none; padding:0;">
+            <div class="tm-actions" id="tm-actions" role="group" aria-label="Video actions">
+                <button type="button" class="tm-action like" id="tm-like-btn" aria-label="Like" tabindex="0">
                     <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></div>
                     <span class="txt" id="tm-like-count">0</span>
                 </button>
-                <button type="button" class="tm-action bookmark" id="tm-bookmark-btn" aria-label="Bookmark" tabindex="0" style="background:transparent; border:none; padding:0;">
+                <button type="button" class="tm-action bookmark" id="tm-bookmark-btn" aria-label="Bookmark" tabindex="0">
                     <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg></div>
                     <span class="txt">收藏</span>
                 </button>
-                <button type="button" class="tm-action download" id="tm-download-btn" aria-label="Download" tabindex="0" style="background:transparent; border:none; padding:0;">
+                <button type="button" class="tm-action download" id="tm-download-btn" aria-label="Download" tabindex="0">
                     <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></div>
                     <span class="txt">下载</span>
                 </button>
             </div>
-            <div class="tm-swipe-mask" id="tm-swipe-mask" style="pointer-events: auto; position: absolute; inset:0; z-index:5; cursor: pointer;"></div>
+            <div class="tm-swipe-mask" id="tm-swipe-mask"></div>
         `;
         this.modal.appendChild(this.uiLayer);
 
@@ -475,6 +477,12 @@ export class TikTokMode {
             if (progressWrap) progressWrap.setAttribute('aria-valuenow', String(Math.round(p)));
             
             this.timeText.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`;
+        };
+
+        video.onended = () => {
+            if (!this.loop) {
+                this.navigate(1);
+            }
         };
     }
     

@@ -106,7 +106,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 07 | media query, display: none, mobile button, order | CSS base styles MUST be defined BEFORE @media queries to avoid cascade overriding | [css_declaration_order_cascading.md](.agents/knowledge/css_declaration_order_cascading.md) |
 | 09 | blank screen, white, FOUC, error, finally | Always remove FOUC hide in `finally` block or error state; don't wait for API success | [api_error_fouc_protection.md](.agents/knowledge/api_error_fouc_protection.md) |
 | 10 | range, daily, all, 日榜, 总榜, same data | API `range=daily` is INVALID — daily = empty string `""`; use RANGE_MAP in ApiClient | [api_range_param_mapping.md](.agents/knowledge/api_range_param_mapping.md) |
-| 11 | hydration, React, error 418, replace, **white screen, blank, FOUC, display none, 白屏, 1500ms** | ⚠️ FOUC fix works; React coexistence ❌ FAILED under ad-hostile hosts (see postmortem) | [react_hydration_coexistence.md](.agents/knowledge/react_hydration_coexistence.md) |
+| 11 | hydration, React, error 418, replace, **white screen, blank, FOUC, display none, 白屏, 1500ms, 间歇性注入失败, 多次刷新** | ✅ SOLVED — 三层防御: Pre-emptive API 冻结 + document.open() + CSP + 选择性错误处理 | [react_hydration_coexistence.md](.agents/knowledge/react_hydration_coexistence.md) |
 | 12 | redirect, clickjacking, ad, window, **Tab-under, location.href, location.replace, onclick=, onmousedown=, postMessage null** | ✅ SOLVED — `document.open()` + CSP meta injection; 9 JS-level approaches failed, browser-level CSP succeeded | [global_clickjacking_defense.md](.agents/knowledge/global_clickjacking_defense.md) |
 | 14 | carousel, loop, wrap, swipe back, 轮转, jump, 跳回, 反向 | Clone 6-slot track (clone-last \| r0\|r1\|r2\|r3 \| clone-first); `transitionend` instant-jump to real mirror | [infinite_carousel_clone_pattern.md](.agents/knowledge/infinite_carousel_clone_pattern.md) |
 | 15 | safari, long press, select, callout, text selection, bounce, overscroll, 长按选字, 弹出菜单 | `-webkit-user-select:none` + `-webkit-touch-callout:none` + `overscroll-behavior:none` + `touch-action:manipulation` | [safari_spa_behavior_suppression.md](.agents/knowledge/safari_spa_behavior_suppression.md) |
@@ -155,3 +155,42 @@ npm run build            # 构建生产 .user.js 到 dist/
 3. `AI_Guidance` 必须明确 **ALWAYS** 和 **NEVER** 边界
 4. 文件名使用 `snake_case.md`，描述性命名
 5. 不要在 knowledge 文件中存放原始调试脚本或临时数据
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
+- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
+- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
+- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview` + `list_communities`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+|------|----------|
+| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
+| `get_review_context` | Need source snippets for review — token-efficient |
+| `get_impact_radius` | Understanding blast radius of a change |
+| `get_affected_flows` | Finding which execution paths are impacted |
+| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes` | Finding functions/classes by name or keyword |
+| `get_architecture_overview` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes` for code review.
+3. Use `get_affected_flows` to understand impact.
+4. Use `query_graph` pattern="tests_for" to check coverage.
