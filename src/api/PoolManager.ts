@@ -191,6 +191,16 @@ export class PoolManager {
         return this.cache.hasFresh(query);
     }
 
+    /**
+     * 从缓存层读取指定查询的数据（不影响当前 dataPool）。
+     * 用于 Hero Carousel 等场景，与 TikTokMode 共享已缓冲视频数据。
+     */
+    public getCachedItems(params: Partial<QueryState>): any[] {
+        const query = { ...this.currentQuery, ...params };
+        const entry = this.cache.get(query);
+        return entry?.items || [];
+    }
+
     public onDataAdded(cb: (items: any[]) => void) {
         this.listeners.push(cb);
     }

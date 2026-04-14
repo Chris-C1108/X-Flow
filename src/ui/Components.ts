@@ -17,10 +17,6 @@ export const Components = {
         `;
     },
 
-    getMobileNavHTML() {
-        return ``;
-    },
-
     getTopBarHTML(isAnimeActive: boolean = false) {
         const rActive = !isAnimeActive ? 'active' : '';
         const aActive = isAnimeActive ? 'active' : '';
@@ -67,17 +63,17 @@ export const Components = {
 
     getHeroCarouselHTML() {
         const ranges = [
-            { id: 'daily',   label: '日榜', en: 'Daily',    icon: '⏱' },
-            { id: 'weekly',  label: '周榜', en: 'Weekly',   icon: '📅' },
-            { id: 'monthly', label: '月榜', en: 'Monthly',  icon: '🗓' },
-            { id: 'all',     label: '总榜', en: 'All-Time', icon: '🏆' },
+            { id: 'daily', label: '日榜', en: 'Daily', icon: '⏱' },
+            { id: 'weekly', label: '周榜', en: 'Weekly', icon: '📅' },
+            { id: 'monthly', label: '月榜', en: 'Monthly', icon: '🗓' },
+            { id: 'all', label: '总榜', en: 'All-Time', icon: '🏆' },
         ];
 
         // Generates one card slot's inner HTML
         const makeCard = (r: { id: string; label: string; en: string; icon: string }, isClone: boolean, cloneKey: string = '') => {
-            const key     = isClone ? cloneKey : r.id;
-            const cardId  = isClone ? '' : `id="hc-card-${r.id}"`;
-            const aria    = isClone
+            const key = isClone ? cloneKey : r.id;
+            const cardId = isClone ? '' : `id="hc-card-${r.id}"`;
+            const aria = isClone
                 ? 'aria-hidden="true" tabindex="-1"'
                 : `role="button" tabindex="0" aria-label="${r.label} No.1视频"`;
             return `

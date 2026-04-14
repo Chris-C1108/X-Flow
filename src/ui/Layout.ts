@@ -26,10 +26,10 @@ export class Layout {
     private heroTimers: Map<string, ReturnType<typeof setInterval>> = new Map();
     /** Ranges used by hero carousel */
     private static readonly HERO_RANGES = [
-        { id: 'daily',   label: '日榜' },
-        { id: 'weekly',  label: '周榜' },
+        { id: 'daily', label: '日榜' },
+        { id: 'weekly', label: '周榜' },
         { id: 'monthly', label: '月榜' },
-        { id: 'all',     label: '总榜' },
+        { id: 'all', label: '总榜' },
     ];
 
     constructor() {
@@ -66,7 +66,6 @@ export class Layout {
                         </div>
                     </div>
                 </main>
-                ${Components.getMobileNavHTML()}
             </div>
         `;
     }
@@ -228,7 +227,7 @@ export class Layout {
                 const channel = (btn as HTMLElement).dataset.channel;
                 const isAnime = channel === 'anime';
                 if (isAnime === this.pool.getApiClient().getIsAnime()) return;
-                
+
                 // Trigger pulse
                 const topbarPulse = document.getElementById('topbar-pulse');
                 if (topbarPulse) {
@@ -236,21 +235,21 @@ export class Layout {
                     void topbarPulse.offsetWidth;
                     topbarPulse.classList.add('pulse-anim');
                 }
-                
+
                 // Update Switcher UI
                 const switcher = btn.closest('.channel-switch');
                 if (switcher) {
                     if (isAnime) switcher.classList.add('is-anime');
                     else switcher.classList.remove('is-anime');
                 }
-                
+
                 document.querySelectorAll('.channel-btn').forEach(b => {
                     b.classList.remove('active');
                     b.setAttribute('aria-selected', 'false');
                 });
                 btn.classList.add('active');
                 btn.setAttribute('aria-selected', 'true');
-                
+
                 // Sink old cards animation (only if not cached for instant feel)
                 const willHitCache = this.pool.hasFreshCache({ isAnimeOnly: isAnime });
                 if (!willHitCache) {
@@ -258,7 +257,7 @@ export class Layout {
                     cards.forEach(c => c.classList.add('sinking'));
                     await new Promise(res => setTimeout(res, 300));
                 }
-                
+
                 await this.applyFilters({ isAnimeOnly: isAnime }, { channelSwitch: true });
             });
         });
@@ -268,12 +267,12 @@ export class Layout {
         if (mainContainer) {
             let isFetching = false;
             let lastScrollTop = 0;
-            
+
             mainContainer.addEventListener('scroll', () => {
                 const scrollTop = mainContainer.scrollTop;
                 const scrollHeight = mainContainer.scrollHeight;
                 const clientHeight = mainContainer.clientHeight;
-                
+
                 if (scrollTop > lastScrollTop && !isFetching) {
                     const threshold = Math.min(scrollHeight * 0.3, 800);
                     if (scrollTop + clientHeight >= scrollHeight - threshold) {
@@ -338,7 +337,7 @@ export class Layout {
                 video.preload = 'auto';
                 card.appendChild(video);
                 hoverVideo = video;
-                video.play().catch(() => {/* autoplay blocked */});
+                video.play().catch(() => {/* autoplay blocked */ });
             }, true);
 
             gridContainer.addEventListener('mouseleave', (e) => {
@@ -366,7 +365,7 @@ export class Layout {
                 video.playsInline = true;
                 card.appendChild(video);
                 hoverVideo = video;
-                video.play().catch(() => {});
+                video.play().catch(() => { });
             };
 
             gridContainer.addEventListener('touchstart', (e: TouchEvent) => {
@@ -474,10 +473,10 @@ export class Layout {
             favorite: '最多喜欢', pv: '最高播放', recent: '最新发布',
         };
         const rl = rangeLabel[q.range] || q.range;
-        const sl = sortLabel[q.sort]  || q.sort;
+        const sl = sortLabel[q.sort] || q.sort;
         el.innerHTML = `${rl}·${sl} <span style="font-size:0.875rem;color:var(--text-400);font-family:var(--font-body);font-weight:400;">Trending Now</span>`;
     }
-    
+
     private renderEmptyState() {
         this.updateSectionTitle();
         const container = document.getElementById('grid-container');
@@ -504,18 +503,18 @@ export class Layout {
                     <button class="retry-btn" onclick="document.dispatchEvent(new CustomEvent('xflow-retry'))">重试连接</button>
                 </div>
             `;
-            
+
             document.addEventListener('xflow-retry', () => {
                 if (container) container.innerHTML = this.generateSkeletons();
                 this.loadInitialData();
             }, { once: true });
         }
     }
-    
+
     private appendRetryBlock() {
         const container = document.getElementById('grid-container');
         if (!container || document.getElementById('tm-retry-block')) return;
-        
+
         const retryHtml = `
             <div id="tm-retry-block" class="retry-block">
                 <p style="color: var(--text-300); margin-bottom: 1rem; font-size: 0.9rem;">发现新的内容，但加载失败了</p>
@@ -523,7 +522,7 @@ export class Layout {
             </div>
         `;
         container.insertAdjacentHTML('beforeend', retryHtml);
-        
+
         const retryBtn = document.getElementById('tm-retry-load');
         if (retryBtn) {
             retryBtn.addEventListener('click', () => {
@@ -536,21 +535,28 @@ export class Layout {
 
     /**
      * 独立并行拉取四个榜单 top3，填充 Hero Carousel 并启动自动轮播。
-     * 使用 PoolManager 的 ApiClient，不影响主数据池。
+     *
+     * 修复：Hero 获取的视频数据通过 PoolManager.preload() 注入缓存层，
+     * 后续 TikTokMode 打开相同 range 时可复用缓存，
+     * 避免 Hero 和播放器各自独立缓冲同一批视频。
      */
     private async loadHeroCarousel() {
-        const api = this.pool.getApiClient();
+        const isAnime = this.pool.getApiClient().getIsAnime();
 
         const fetches = Layout.HERO_RANGES.map(async (r) => {
+            const query = { isAnimeOnly: isAnime, range: r.id, sort: 'favorite' };
+
+            // 1. 先查缓存（可能已被 preload 或其他路径填充）
+            const cached = this.pool.getCachedItems(query);
+            if (cached.length > 0) {
+                return { id: r.id, items: cached.slice(0, 3) };
+            }
+
+            // 2. 缓存未命中 → 通过 preload 获取并写入缓存
             try {
-                const data = await api.fetchList({
-                    range: r.id,
-                    sort: 'favorite',
-                    page: 1,
-                    per_page: 3,
-                });
-                const items = data?.items || [];
-                return { id: r.id, items };
+                await this.pool.preload({ ...query, perPage: 3 });
+                const fresh = this.pool.getCachedItems(query);
+                return { id: r.id, items: fresh.slice(0, 3) };
             } catch {
                 return { id: r.id, items: [] as any[] };
             }
@@ -571,9 +577,9 @@ export class Layout {
         });
 
         // Mirror clone slots
-        const allItems  = this.heroData.get('all')  || [];
+        const allItems = this.heroData.get('all') || [];
         const dailyItems = this.heroData.get('daily') || [];
-        if (allItems.length)  this.populateHeroCard('clone-prev', allItems[0], 0);
+        if (allItems.length) this.populateHeroCard('clone-prev', allItems[0], 0);
         if (dailyItems.length) this.populateHeroCard('clone-next', dailyItems[0], 0);
 
         // Start auto-loop for each real card
@@ -616,7 +622,7 @@ export class Layout {
                 }, 200);
             }
         }
-        
+
         const badgeRankEl = document.getElementById(`hc-badge-rank-${key}`);
         if (badgeRankEl) {
             badgeRankEl.textContent = `No.0${subIndex + 1}`;
@@ -684,7 +690,7 @@ export class Layout {
         video.playsInline = true;
         video.load();
         video.classList.add('playing');
-        video.play().catch(() => {/* autoplay blocked */});
+        video.play().catch(() => {/* autoplay blocked */ });
     }
 
     /**
@@ -700,7 +706,7 @@ export class Layout {
         video.playsInline = true;
         video.load();
         video.classList.add('playing');
-        video.play().catch(() => {});
+        video.play().catch(() => { });
     }
 
     /** Infinite-loop carousel — 6 slots: [clone-all | d | w | m | a | clone-daily] */
@@ -850,7 +856,7 @@ export class Layout {
 
         const list = this.pool.getDataPool();
         let html = '';
-        
+
         const startIndex = append ? container.children.length : 0;
 
         const oldRetryBlock = document.getElementById('tm-retry-block');
@@ -862,7 +868,7 @@ export class Layout {
             const item = list[i];
             const rankNum = i + 1;
             let rankClass = rankNum === 1 ? 'rank-1' : (rankNum === 2 ? 'rank-2' : (rankNum === 3 ? 'rank-3' : ''));
-            
+
             html += `
             <div class="media-card" style="animation-delay: ${(i % 20) * 0.05}s" data-index="${i}" ${item.url ? `data-video-url="${escapeHtml(item.url)}"` : ''} role="button" tabindex="0" aria-label="${escapeHtml(item.title || 'Video card')}">
                 <img src="${item.thumbnail}" alt="${escapeHtml(item.title || 'Thumbnail')}" class="card-img" loading="lazy">
