@@ -28,7 +28,7 @@ export default defineConfig(({ command }) => ({
           'truvaze.com',
           '*'
         ],
-        grant: ['GM_xmlhttpRequest', 'GM_setValue', 'GM_getValue'],
+        grant: ['GM_xmlhttpRequest', 'GM_setValue', 'GM_getValue', 'GM_openInTab'],
         "run-at": 'document-start',
         noframes: true,
       },

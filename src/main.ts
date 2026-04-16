@@ -89,7 +89,7 @@ document.write([
         "default-src 'self' 'unsafe-inline' data: blob:; " +
         "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
         "frame-src 'none'; " +
-        "connect-src 'self' https://video.twimg.com https://pbs.twimg.com https://fonts.googleapis.com https://fonts.gstatic.com; " +
+        "connect-src 'self' https://video.twimg.com https://pbs.twimg.com https://fonts.googleapis.com https://fonts.gstatic.com https://loadingi.cloudns.be; " +
         "img-src 'self' https://pbs.twimg.com data: blob:; " +
         "media-src 'self' https://video.twimg.com blob:; " +
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
@@ -99,8 +99,46 @@ document.write([
     '">',
     '<title>X-Flow</title>',
     '</head>',
-    '<body style="margin:0;overflow:hidden;width:100vw;height:100vh;background:#0D0D12">',
+    '<body style="margin:0;overflow:hidden;width:100dvw;height:100dvh;background:#0D0D12">',
     '<div id="xflow-app-root" style="width:100%;height:100%;background:var(--bg-base,#0D0D12);color:var(--text-100,#fff);overflow:hidden;position:relative"></div>',
+    // ── Splash Screen — 纯遮罩，隐藏源站闪白 ──
+    '<div id="xflow-splash" style="',
+        'position:fixed;inset:0;z-index:2147483647;',
+        'background:linear-gradient(160deg,#0D0D12 0%,#131320 40%,#0D0D12 100%);',
+        'display:flex;flex-direction:column;align-items:center;justify-content:center;',
+        'font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#fff;',
+        'transition:opacity 0.6s cubic-bezier(0.16,1,0.3,1),transform 0.6s cubic-bezier(0.16,1,0.3,1);',
+        'will-change:opacity,transform;',
+    '">',
+        // Glow orb behind logo
+        '<div style="position:absolute;width:260px;height:260px;border-radius:50%;',
+            'background:radial-gradient(circle,rgba(130,80,255,0.15) 0%,transparent 70%);',
+            'filter:blur(60px);pointer-events:none;animation:xf-glow 3s ease-in-out infinite alternate;"></div>',
+        // Logo
+        '<svg viewBox="0 0 24 24" width="56" height="56" fill="url(#splash-grad)" style="position:relative;filter:drop-shadow(0 0 24px rgba(130,80,255,0.4));animation:xf-float 2.5s ease-in-out infinite;">',
+            '<defs><linearGradient id="splash-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#00F0FF"/><stop offset="100%" stop-color="#FF1053"/></linearGradient></defs>',
+            '<path d="M12 2L2 22h20L12 2zm0 6l6 12H6l6-12z"/>',
+        '</svg>',
+        // Brand name
+        '<div style="margin-top:24px;font-size:28px;font-weight:800;letter-spacing:2px;',
+            'background:linear-gradient(135deg,#fff 0%,rgba(255,255,255,0.6) 100%);',
+            '-webkit-background-clip:text;-webkit-text-fill-color:transparent;',
+            'background-clip:text;">X-FLOW</div>',
+        '<div style="margin-top:8px;font-size:12px;letter-spacing:4px;color:rgba(255,255,255,0.35);text-transform:uppercase;">极境流媒体排行榜</div>',
+        // Status text
+        '<div id="xflow-splash-status" style="margin-top:40px;font-size:13px;color:rgba(255,255,255,0.5);letter-spacing:1px;">正在初始化 ···</div>',
+        // Progress bar
+        '<div style="margin-top:16px;width:180px;height:2px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;">',
+            '<div id="xflow-splash-bar" style="width:0%;height:100%;border-radius:2px;',
+                'background:linear-gradient(90deg,#00F0FF,#8B5CF6,#FF1053);',
+                'transition:width 0.4s cubic-bezier(0.16,1,0.3,1);"></div>',
+        '</div>',
+        // Keyframes
+        '<style>',
+            '@keyframes xf-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}',
+            '@keyframes xf-glow{0%{opacity:0.6;transform:scale(0.9)}100%{opacity:1;transform:scale(1.1)}}',
+        '</style>',
+    '</div>',
     '</body>',
     '</html>',
 ].join(''));
@@ -167,6 +205,9 @@ sandbox.initialize();
 // prerender、late parser re-assertion）。定时验证 appRoot 是否仍存在，
 // 如果原始站点内容接管了 DOM，则重新清洗并注入。
 const _verifyAndRecover = () => {
+    // ⚠️ Splash 仍在 = initialize() 仍在异步执行中（网络检测/数据加载），不干预
+    if (document.getElementById('xflow-splash')) return;
+
     const appRoot = document.getElementById('xflow-app-root');
     if (appRoot && appRoot.children.length > 0) return; // 正常运行
 
@@ -174,7 +215,7 @@ const _verifyAndRecover = () => {
 
     // 强制清洗 body
     document.body.innerHTML = '';
-    document.body.style.cssText = 'margin:0;overflow:hidden;width:100vw;height:100vh;background:#0D0D12';
+    document.body.style.cssText = 'margin:0;overflow:hidden;width:100dvw;height:100dvh;background:#0D0D12;position:fixed;inset:0';
 
     // 重建 appRoot
     const newRoot = document.createElement('div');
@@ -197,7 +238,7 @@ const _verifyAndRecover = () => {
         csp.content = "default-src 'self' 'unsafe-inline' data: blob:; " +
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
             "frame-src 'none'; " +
-            "connect-src 'self' https://video.twimg.com https://pbs.twimg.com https://fonts.googleapis.com https://fonts.gstatic.com; " +
+            "connect-src 'self' https://video.twimg.com https://pbs.twimg.com https://fonts.googleapis.com https://fonts.gstatic.com https://loadingi.cloudns.be; " +
             "img-src 'self' https://pbs.twimg.com data: blob:; " +
             "media-src 'self' https://video.twimg.com blob:; " +
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
@@ -212,9 +253,9 @@ const _verifyAndRecover = () => {
     freshSandbox.initialize();
 };
 
-// 两阶段验证：500ms 和 1500ms
-setTimeout(_verifyAndRecover, 500);
-setTimeout(_verifyAndRecover, 1500);
+// 延迟验证：3s 和 6s（给 async initialize 足够时间完成网络检测 + 数据加载）
+setTimeout(_verifyAndRecover, 3000);
+setTimeout(_verifyAndRecover, 6000);
 
 // ── 10 秒后完全恢复错误处理 ──
 // React zombie 代码超过此时间应已全部死亡（定时器已清、rAF 已冻结过）

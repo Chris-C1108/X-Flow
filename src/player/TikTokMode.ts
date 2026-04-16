@@ -1,11 +1,16 @@
 import { VirtualList } from './VirtualList';
 import { PoolManager } from '../api/PoolManager';
-import { formatTime } from '../utils/Format';
-import { loadJSON, saveJSON, STORAGE_KEYS } from '../engine/Storage';
+import { formatTime, escapeHtml, formatCount } from '../utils/Format';
+import { loadJSON, saveJSON, loadGM, saveGM, STORAGE_KEYS } from '../engine/Storage';
+import { collector } from '../telemetry/EventCollector';
+import { fetchComments, postComment, Comment } from '../api/CommentService';
 
 function escapeCSSUrl(url: string) {
     return url.replace(/["'\\]/g, '\\$&');
 }
+
+/** 可选倍速档位 */
+const SPEED_OPTIONS = [0.5, 1, 1.5, 2] as const;
 
 export class TikTokMode {
     public isOpen: boolean = false;
@@ -16,6 +21,7 @@ export class TikTokMode {
     private currentIndex: number = 0;
     private loop: boolean;
     private bookmarks: Set<string>;
+    private likes: Set<string>;
     private preloadTimer: ReturnType<typeof setTimeout> | null = null;
     private isDraggingProgress: boolean = false;
     private onCloseCallback: (() => void) | null = null;
@@ -25,19 +31,30 @@ export class TikTokMode {
     private titleText: HTMLElement;
     private volume: number;
     private isMuted: boolean;
+    private playbackRate: number;
+    private centerIconTimer: ReturnType<typeof setTimeout> | null = null;
+    private longPressTimer: ReturnType<typeof setTimeout> | null = null;
+    private isLongPressing: boolean = false;
+    private savedPlaybackRate: number = 1;
+    private lastTapTime: number = 0;
+    private lastTapX: number = 0;
+    private doubleTapTimer: ReturnType<typeof setTimeout> | null = null;
+    private highlightMarkers: HTMLElement[] = [];
 
     constructor(pool: PoolManager) {
         this.pool = pool;
         this.vl = new VirtualList();
         this.loop = !!loadJSON(STORAGE_KEYS.LOOP, false);
         this.bookmarks = new Set(loadJSON(STORAGE_KEYS.BOOKMARKS, []) as string[]);
+        this.likes = new Set(loadGM(STORAGE_KEYS.LIKES, []) as string[]);
+        this.playbackRate = loadJSON(STORAGE_KEYS.PLAYBACK_RATE, 1) as number;
         const savedVol = loadJSON(STORAGE_KEYS.VOLUME, { volume: 0.7, muted: false }) as { volume: number; muted: boolean };
         this.volume = savedVol.volume;
         this.isMuted = savedVol.muted;
 
         this.modal = document.createElement('div');
         this.modal.id = 'tm-tiktok-modal';
-        this.modal.style.cssText = 'position: fixed; inset: 0; z-index: 2147483647; display: none; background: #000; color: #fff; font-family: sans-serif;';
+        this.modal.style.cssText = 'position: fixed; inset: 0; z-index: 2147483647; display: none; background: #000; color: #fff; font-family: sans-serif; height: 100dvh; overflow-anchor: none; contain: layout size style;';
         
         this.modal.appendChild(this.vl.container);
 
@@ -46,9 +63,28 @@ export class TikTokMode {
         this.uiLayer.innerHTML = `
             <div class="tm-topbar">
                 <div class="tm-pill" id="tm-count" aria-live="polite">1 / 1</div>
-                <button type="button" class="tm-btn" id="tm-close-btn" aria-label="Close" tabindex="0">
-                    <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
-                </button>
+                <div class="tm-top-actions">
+                    <button type="button" class="tm-btn tm-speed-btn" id="tm-speed-btn" aria-label="Playback speed" tabindex="0">
+                        <span id="tm-speed-label">1×</span>
+                    </button>
+                    <button type="button" class="tm-btn" id="tm-pip-btn" aria-label="Picture in picture" tabindex="0" style="display:none">
+                        <svg viewBox="0 0 24 24"><path d="M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.1.9 1.98 2 1.98h18c1.1 0 2-.88 2-1.98V5c0-1.1-.9-2-2-2zm0 16.01H3V4.99h18v14.02z"/></svg>
+                    </button>
+                    <button type="button" class="tm-btn" id="tm-close-btn" aria-label="Close" tabindex="0">
+                        <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="tm-speed-panel" id="tm-speed-panel">
+                <button type="button" class="tm-speed-option" data-rate="0.5">0.5×</button>
+                <button type="button" class="tm-speed-option" data-rate="0.75">0.75×</button>
+                <button type="button" class="tm-speed-option active" data-rate="1">1×</button>
+                <button type="button" class="tm-speed-option" data-rate="1.25">1.25×</button>
+                <button type="button" class="tm-speed-option" data-rate="1.5">1.5×</button>
+                <button type="button" class="tm-speed-option" data-rate="2">2×</button>
+            </div>
+            <div class="tm-center-icon" id="tm-center-icon">
+                <svg id="tm-center-svg" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
             </div>
             <div class="tm-info">
                 <h2 class="tm-title" id="tm-title"></h2>
@@ -76,12 +112,35 @@ export class TikTokMode {
                     <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg></div>
                     <span class="txt">收藏</span>
                 </button>
+                <button type="button" class="tm-action author" id="tm-author-btn" aria-label="Author" tabindex="0" style="display:none">
+                    <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></div>
+                    <span class="txt">主页</span>
+                </button>
+                <button type="button" class="tm-action comment" id="tm-comment-btn" aria-label="Comment" tabindex="0">
+                    <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18zM18 14H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/></svg></div>
+                    <span class="txt" id="tm-comment-count">评论</span>
+                </button>
                 <button type="button" class="tm-action download" id="tm-download-btn" aria-label="Download" tabindex="0">
                     <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></div>
                     <span class="txt">下载</span>
                 </button>
             </div>
+            <div class="tm-speed-tip" id="tm-speed-tip">⏩ 长按加速中</div>
             <div class="tm-swipe-mask" id="tm-swipe-mask"></div>
+            
+            <div class="tm-comment-panel" id="tm-comment-panel">
+                <div class="tm-comment-header">
+                    <span id="tm-comment-title">评论</span>
+                    <button class="tm-comment-close" id="tm-comment-close" aria-label="Close comments">
+                        <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                    </button>
+                </div>
+                <div class="tm-comment-body" id="tm-comment-list"></div>
+                <div class="tm-comment-footer">
+                    <input type="text" class="tm-comment-input" id="tm-comment-input" placeholder="输入评论..." />
+                    <button class="tm-comment-send" id="tm-comment-send" disabled>发送</button>
+                </div>
+            </div>
         `;
         this.modal.appendChild(this.uiLayer);
 
@@ -105,16 +164,73 @@ export class TikTokMode {
     }
 
     private bindEvents() {
+        const speedBtn = this.uiLayer.querySelector('#tm-speed-btn')!;
+        const speedPanel = this.uiLayer.querySelector('#tm-speed-panel')!;
+        const speedLabel = this.uiLayer.querySelector('#tm-speed-label')!;
+
+        speedLabel.textContent = this.playbackRate === 1 ? '1×' : this.playbackRate + '×';
+
+        speedBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            speedPanel.classList.toggle('active');
+        });
+
+        speedPanel.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const target = (e.target as HTMLElement).closest('.tm-speed-option') as HTMLElement | null;
+            if (!target) return;
+            const rate = parseFloat(target.dataset.rate || '1');
+            this.playbackRate = rate;
+            saveJSON(STORAGE_KEYS.PLAYBACK_RATE, rate);
+
+            speedPanel.querySelectorAll('.tm-speed-option').forEach(o => o.classList.remove('active'));
+            target.classList.add('active');
+            speedLabel.textContent = rate === 1 ? '1×' : rate + '×';
+            speedPanel.classList.remove('active');
+
+            const video = this.getCurrentVideo();
+            if (video) video.playbackRate = rate;
+        });
+
+        this.modal.addEventListener('click', () => {
+            speedPanel.classList.remove('active');
+        });
+
+        const pipBtn = this.uiLayer.querySelector<HTMLButtonElement>('#tm-pip-btn')!;
+        if (document.pictureInPictureEnabled) {
+            pipBtn.style.display = '';
+            pipBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                try {
+                    const video = this.getCurrentVideo();
+                    if (document.pictureInPictureElement) {
+                        await document.exitPictureInPicture();
+                    } else if (video) {
+                        await video.requestPictureInPicture();
+                    }
+                } catch (err) {
+                    console.log('PiP not available', err);
+                }
+            });
+        }
+
         const closeBtn = this.uiLayer.querySelector('#tm-close-btn')!;
         closeBtn.addEventListener('click', () => this.closeModal());
 
         const swipeMask = this.uiLayer.querySelector('#tm-swipe-mask')!;
+        const speedTip = this.uiLayer.querySelector('#tm-speed-tip') as HTMLElement;
         let startY = 0;
+        let startX = 0;
         let isMoving = false;
+        let touchScrolled = false;
 
         swipeMask.addEventListener('touchstart', (e: any) => {
             const touchY = e.touches[0].clientY;
+            const touchX = e.touches[0].clientX;
             const screenH = window.innerHeight;
+            touchScrolled = false;
+            startX = touchX;
+
             if (touchY > screenH * 0.85) {
                 isMoving = false;
                 return;
@@ -122,15 +238,48 @@ export class TikTokMode {
             startY = touchY; 
             isMoving = true; 
             this.vl.setTransition(false);
+
+            // M2-1: 长按快进 — 450ms 后开启 1.5× 倍速
+            if (this.longPressTimer) clearTimeout(this.longPressTimer);
+            this.longPressTimer = setTimeout(() => {
+                if (!touchScrolled && this.isOpen) {
+                    this.isLongPressing = true;
+                    const video = this.getCurrentVideo();
+                    if (video) {
+                        this.savedPlaybackRate = video.playbackRate;
+                        video.playbackRate = 1.5;
+                    }
+                    if (speedTip) {
+                        speedTip.classList.add('show');
+                    }
+                }
+            }, 450);
         }, { passive: true });
 
         swipeMask.addEventListener('touchmove', (e: any) => { 
+            const deltaX = Math.abs(e.touches[0].clientX - startX);
+            const deltaY_move = Math.abs(e.touches[0].clientY - startY);
+            if (deltaX > 10 || deltaY_move > 10) {
+                touchScrolled = true;
+                if (this.longPressTimer) { clearTimeout(this.longPressTimer); this.longPressTimer = null; }
+                if (this.isLongPressing) {
+                    this.cancelLongPress(speedTip);
+                }
+            }
             if (!isMoving) return;
             const deltaY = e.touches[0].clientY - startY;
             this.vl.updateTransforms(this.currentIndex, deltaY);
         }, { passive: false });
 
         swipeMask.addEventListener('touchend', (e: any) => { 
+            // M2-1: 取消长按
+            if (this.longPressTimer) { clearTimeout(this.longPressTimer); this.longPressTimer = null; }
+            if (this.isLongPressing) {
+                this.cancelLongPress(speedTip);
+                isMoving = false;
+                return;
+            }
+
             if (!isMoving) return;
             isMoving = false;
             const deltaY = e.changedTouches[0].clientY - startY;
@@ -144,8 +293,14 @@ export class TikTokMode {
                 this.vl.updateTransforms(this.currentIndex, 0);
             }
         }, { passive: true });
+
+        swipeMask.addEventListener('touchcancel', () => {
+            if (this.longPressTimer) { clearTimeout(this.longPressTimer); this.longPressTimer = null; }
+            if (this.isLongPressing) {
+                this.cancelLongPress(speedTip);
+            }
+        }, { passive: true });
         
-        // Desktop support
         swipeMask.addEventListener('wheel', (e: any) => {
             if (!this.isOpen) return; 
             e.preventDefault();
@@ -169,18 +324,57 @@ export class TikTokMode {
             }
         });
         
-        swipeMask.addEventListener('click', () => {
-            if (!isMoving) this.togglePlayCurrent();
+        // M2-2: 双击快进/快退 + 单击暂停/播放
+        swipeMask.addEventListener('click', (e: any) => {
+            if (this.isLongPressing) return;
+            speedPanel.classList.remove('active');
+
+            const now = Date.now();
+            const screenW = window.innerWidth;
+            const tapX = e.clientX;
+
+            if (now - this.lastTapTime < 300 && Math.abs(tapX - this.lastTapX) < 80) {
+                // 双击
+                if (this.doubleTapTimer) { clearTimeout(this.doubleTapTimer); this.doubleTapTimer = null; }
+                const video = this.getCurrentVideo();
+                if (!video || !video.duration) return;
+
+                const ratio = tapX / screenW;
+                if (ratio < 0.333) {
+                    video.currentTime = Math.max(0, video.currentTime - 10);
+                    this.showDoubleTapFeedback('left');
+                } else if (ratio > 0.666) {
+                    video.currentTime = Math.min(video.duration, video.currentTime + 10);
+                    this.showDoubleTapFeedback('right');
+                }
+                this.lastTapTime = 0;
+            } else {
+                this.lastTapTime = now;
+                this.lastTapX = tapX;
+                this.doubleTapTimer = setTimeout(() => {
+                    this.togglePlayCurrent();
+                    this.doubleTapTimer = null;
+                }, 300);
+            }
         });
 
-        // Like button - show the server-side like count (read-only display from API data)
         const likeBtn = this.uiLayer.querySelector('#tm-like-btn')!;
         likeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            likeBtn.classList.toggle('active');
+            const list = this.pool.getDataPool();
+            if (!list.length) return;
+            const id = String(list[this.currentIndex].id);
+            if (this.likes.has(id)) {
+                this.likes.delete(id);
+                likeBtn.classList.remove('active');
+            } else {
+                this.likes.add(id);
+                likeBtn.classList.add('active');
+                collector.trackLike(id);
+            }
+            saveGM(STORAGE_KEYS.LIKES, Array.from(this.likes));
         });
 
-        // Bookmark button - toggle bookmark in localStorage
         const bookmarkBtn = this.uiLayer.querySelector('#tm-bookmark-btn')!;
         bookmarkBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -191,14 +385,88 @@ export class TikTokMode {
             if (this.bookmarks.has(id)) {
                 this.bookmarks.delete(id);
                 bookmarkBtn.classList.remove('active');
+                collector.trackBookmark(id, false);
             } else {
                 this.bookmarks.add(id);
                 bookmarkBtn.classList.add('active');
+                collector.trackBookmark(id, true);
             }
             saveJSON(STORAGE_KEYS.BOOKMARKS, Array.from(this.bookmarks));
         });
 
-        // Download button - open video URL in new tab for download
+        // M2-4: 评论面板逻辑
+        const commentBtn = this.uiLayer.querySelector('#tm-comment-btn')!;
+        const commentPanel = this.uiLayer.querySelector('#tm-comment-panel')!;
+        const commentClose = this.uiLayer.querySelector('#tm-comment-close')!;
+        const commentList = this.uiLayer.querySelector('#tm-comment-list')!;
+        const commentInput = this.uiLayer.querySelector('#tm-comment-input') as HTMLInputElement;
+        const commentSend = this.uiLayer.querySelector('#tm-comment-send') as HTMLButtonElement;
+
+        commentBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            commentPanel.classList.add('active');
+            this.loadComments();
+        });
+
+        commentClose.addEventListener('click', () => {
+            commentPanel.classList.remove('active');
+        });
+
+        commentInput.addEventListener('input', () => {
+            commentSend.disabled = !commentInput.value.trim();
+        });
+
+        commentInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !commentSend.disabled) {
+                commentSend.click();
+            }
+        });
+
+        commentSend.addEventListener('click', async () => {
+            const msg = commentInput.value.trim();
+            if (!msg) return;
+
+            const list = this.pool.getDataPool();
+            const item = list[this.currentIndex];
+            if (!item || !item.url_cd) return;
+
+            commentSend.disabled = true;
+            const originalText = commentSend.textContent;
+            commentSend.textContent = '...';
+
+            try {
+                const success = await postComment(item.url_cd, msg);
+                if (success) {
+                    commentInput.value = '';
+                    // 乐观更新：将新评论添加到列表顶部
+                    const now = new Date();
+                    const newCommentHtml = `<div class="tm-comment-item" style="background: rgba(255,255,255,0.05); padding: 8px; border-radius: 6px;">
+                        <span class="tm-comment-time">刚刚</span>
+                        <div class="tm-comment-content">${escapeHtml(msg)}</div>
+                    </div>`;
+                    const emptyState = commentList.querySelector('.tm-comment-empty');
+                    if (emptyState) emptyState.remove();
+                    commentList.insertAdjacentHTML('afterbegin', newCommentHtml);
+                    
+                    // 增加评论数计数
+                    const countEl = this.uiLayer.querySelector('#tm-comment-count');
+                    if (countEl) {
+                        const countText = countEl.textContent === '评论' ? '0' : countEl.textContent;
+                        const count = parseInt(countText || '0') + 1;
+                        countEl.textContent = formatCount(count);
+                        item.commentCount = (item.commentCount || (item._count && item._count.comments) || item.comments || 0) + 1;
+                    }
+                } else {
+                    alert('发送评论失败');
+                }
+            } catch (err) {
+                alert('发送评论失败: ' + err);
+            } finally {
+                commentSend.textContent = originalText;
+                commentSend.disabled = !commentInput.value.trim();
+            }
+        });
+
         const downloadBtn = this.uiLayer.querySelector('#tm-download-btn')!;
         downloadBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -212,19 +480,16 @@ export class TikTokMode {
                 a.target = '_blank';
                 a.rel = 'noopener';
                 a.click();
+                collector.trackDownload(String(item.id));
             }
         });
 
-        // Progress bar interaction (touch + mouse + click)
         const progressWrap = this.uiLayer.querySelector('#tm-progress-wrap')!;
-
-        // Click to seek
         progressWrap.addEventListener('click', (e: any) => {
             e.stopPropagation();
             this.seekToPosition(e.clientX);
         });
 
-        // Touch drag on progress bar
         progressWrap.addEventListener('touchstart', (e: any) => {
             e.stopPropagation();
             this.isDraggingProgress = true;
@@ -246,7 +511,6 @@ export class TikTokMode {
             progressWrap.classList.remove('dragging');
         }, { passive: true });
 
-        // Mouse drag on progress bar (PC)
         progressWrap.addEventListener('mousedown', (e: any) => {
             e.stopPropagation();
             e.preventDefault();
@@ -268,7 +532,6 @@ export class TikTokMode {
             document.addEventListener('mouseup', onMouseUp);
         });
 
-        // Volume controls
         const volBtn = this.uiLayer.querySelector('#tm-vol-btn')!;
         const volSliderWrap = this.uiLayer.querySelector('.tm-vol-slider-wrap')!;
         const volFill = this.uiLayer.querySelector('#tm-vol-fill') as HTMLElement;
@@ -326,7 +589,6 @@ export class TikTokMode {
             document.addEventListener('mouseup', onUp);
         });
 
-        // Initialize volume fill
         volFill.style.width = `${(this.isMuted ? 0 : this.volume) * 100}%`;
         updateVolIcon();
     }
@@ -348,13 +610,16 @@ export class TikTokMode {
 
     public closeModal() {
         if (this.preloadTimer) { clearTimeout(this.preloadTimer); this.preloadTimer = null; }
+        if (document.pictureInPictureElement) {
+            document.exitPictureInPicture().catch(() => {});
+        }
         this.isOpen = false;
         this.modal.style.display = 'none';
         this.pauseAll();
+        collector.flushSession();
         if (this.onCloseCallback) this.onCloseCallback();
     }
 
-    /** Register a callback invoked when the player modal is closed. */
     public onClose(cb: () => void) {
         this.onCloseCallback = cb;
     }
@@ -417,7 +682,6 @@ export class TikTokMode {
             thumb.classList.remove('hidden');
             video.style.opacity = '0';
 
-            video.oncanplay = null; // Clear old event listener before setting a new one
             video.oncanplay = () => {
                 if (video.getAttribute('data-index') === logicalIndex.toString()) {
                     thumb.classList.add('hidden');
@@ -439,44 +703,85 @@ export class TikTokMode {
         if (!list.length) return;
         
         const item = list[this.currentIndex];
+        const videoId = String(item.id);
         this.titleText.textContent = item.title || 'Video';
         
         this.updateCountUI();
 
-        // Update action buttons state
         const likeCount = this.uiLayer.querySelector('#tm-like-count');
         if (likeCount) likeCount.textContent = String(item.favorite || 0);
 
         const likeBtn = this.uiLayer.querySelector('#tm-like-btn');
-        if (likeBtn) likeBtn.classList.remove('active');
+        if (likeBtn) {
+            if (this.likes.has(videoId)) {
+                likeBtn.classList.add('active');
+            } else {
+                likeBtn.classList.remove('active');
+            }
+        }
 
         const bookmarkBtn = this.uiLayer.querySelector('#tm-bookmark-btn');
         if (bookmarkBtn) {
-            if (this.bookmarks.has(String(item.id))) {
+            if (this.bookmarks.has(videoId)) {
                 bookmarkBtn.classList.add('active');
             } else {
                 bookmarkBtn.classList.remove('active');
             }
         }
         
+        const commentCountTxt = this.uiLayer.querySelector('#tm-comment-count');
+        if (commentCountTxt) {
+            const count = item.commentCount || (item._count && item._count.comments) || item.comments || 0;
+            commentCountTxt.textContent = count > 0 ? formatCount(count) : '评论';
+        }
+
         const node = this.vl.getNode(this.currentIndex);
         const video = node.querySelector('.tm-video') as HTMLVideoElement;
         
         video.preload = 'auto';
+        video.playbackRate = this.playbackRate;
         video.play().catch(e => console.log('Autoplay prevented', e));
         video.volume = this.isMuted ? 0 : this.volume;
         video.muted = this.isMuted;
         this.schedulePreload();
 
+        const authorBtn = this.uiLayer.querySelector<HTMLButtonElement>('#tm-author-btn');
+        if (authorBtn) {
+            const authorUrl = (item as any).author_url || (item as any).authorUrl || '';
+            if (authorUrl) {
+                authorBtn.style.display = '';
+                authorBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    window.open(authorUrl, '_blank', 'noopener,noreferrer');
+                };
+            } else {
+                authorBtn.style.display = 'none';
+            }
+        }
+
+        video.onleavepictureinpicture = () => {
+            if (this.isOpen && !video.paused) {
+                video.play().catch(() => {});
+            }
+        };
+
+        collector.startSession(videoId);
+        collector.trackViewStart(videoId);
+
+        // M2-3: 异步拉取高光时刻并渲染到进度条（不阻塞播放主流程）
+        this.renderHighlightMarkers(videoId);
+
         video.ontimeupdate = () => {
             if (!video.duration) return;
             const p = (video.currentTime / video.duration) * 100;
-            this.progressFill.style.width = `${p}%`;
+            this.progressFill.style.width = p + '%';
             
             const progressWrap = this.uiLayer.querySelector('#tm-progress-wrap');
             if (progressWrap) progressWrap.setAttribute('aria-valuenow', String(Math.round(p)));
             
-            this.timeText.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`;
+            this.timeText.textContent = formatTime(video.currentTime) + ' / ' + formatTime(video.duration);
+
+            collector.trackTimeUpdate(video.currentTime, video.duration);
         };
 
         video.onended = () => {
@@ -492,7 +797,6 @@ export class TikTokMode {
         const list = this.pool.getDataPool();
         if (!list.length) return;
 
-        // After 2s on current video, start buffering next
         this.preloadTimer = setTimeout(() => {
             const nextIdx = this.currentIndex + 1;
             if (nextIdx < list.length) {
@@ -503,7 +807,6 @@ export class TikTokMode {
                 }
             }
 
-            // After 4s total, start buffering prev too
             this.preloadTimer = setTimeout(() => {
                 const prevIdx = this.currentIndex - 1;
                 if (prevIdx >= 0) {
@@ -538,10 +841,24 @@ export class TikTokMode {
     private togglePlayCurrent() {
         const node = this.vl.getNode(this.currentIndex);
         const video = node.querySelector('.tm-video') as HTMLVideoElement;
+        const centerIcon = this.uiLayer.querySelector('#tm-center-icon') as HTMLElement | null;
+        const centerSvg = this.uiLayer.querySelector('#tm-center-svg') as SVGElement | null;
+
         if (video.paused) {
             video.play().catch(e => console.log('Play prevented', e));
+            if (centerSvg) centerSvg.innerHTML = '<path d="M8 5v14l11-7z"/>';
         } else {
             video.pause();
+            if (centerSvg) centerSvg.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+        }
+
+        // M1-3: 中心动画提示
+        if (centerIcon) {
+            centerIcon.classList.remove('show');
+            void centerIcon.offsetWidth; // force reflow to restart animation
+            centerIcon.classList.add('show');
+            if (this.centerIconTimer) clearTimeout(this.centerIconTimer);
+            this.centerIconTimer = setTimeout(() => centerIcon.classList.remove('show'), 600);
         }
     }
 
@@ -551,5 +868,98 @@ export class TikTokMode {
         if (countSpan) {
             countSpan.textContent = `${this.currentIndex + 1} / ${list.length}${this.pool.hasMoreData() ? '+' : ''}`;
         }
+    }
+
+    // ── M2-1: 长按快进 ──────────────────────────────────────
+    private cancelLongPress(speedTip: HTMLElement | null) {
+        this.isLongPressing = false;
+        const video = this.getCurrentVideo();
+        if (video) {
+            video.playbackRate = this.savedPlaybackRate;
+        }
+        if (speedTip) {
+            speedTip.classList.remove('show');
+        }
+    }
+
+    // ── M2-4: 加载当前视频评论 ──────────────────────────────
+    private async loadComments() {
+        const commentList = this.uiLayer.querySelector('#tm-comment-list');
+        const list = this.pool.getDataPool();
+        const item = list[this.currentIndex];
+        
+        if (!commentList || !item || !item.url_cd) return;
+
+        commentList.innerHTML = '<div class="tm-comment-loading"><div class="spinner"></div></div>';
+        
+        try {
+            const comments = await fetchComments(item.url_cd);
+            
+            if (!comments || comments.length === 0) {
+                commentList.innerHTML = '<div class="tm-comment-empty">暂无评论，快来抢沙发！</div>';
+                return;
+            }
+            
+            // Render comments
+            commentList.innerHTML = comments.map(c => `
+                <div class="tm-comment-item">
+                    <span class="tm-comment-time">${escapeHtml(c.time)}</span>
+                    <div class="tm-comment-content">${escapeHtml(c.content)}</div>
+                </div>
+            `).join('');
+
+        } catch (err) {
+            commentList.innerHTML = '<div class="tm-comment-empty">加载评论失败，请重试</div>';
+        }
+    }
+
+    // ── M2-2: 双击反馈动画 ──────────────────────────────────
+    private showDoubleTapFeedback(side: 'left' | 'right') {
+        const el = document.createElement('div');
+        el.className = `tm-doubletap-feedback ${side}`;
+        if (side === 'left') {
+            el.innerHTML = '<svg viewBox="0 0 24 24"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6z"/></svg> 10s';
+        } else {
+            el.innerHTML = '10s <svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>';
+        }
+        this.uiLayer.appendChild(el);
+        el.addEventListener('animationend', () => el.remove());
+    }
+
+    // ── M2-3: 高光打点 ──────────────────────────────────────
+    private async renderHighlightMarkers(videoId: string) {
+        this.clearHighlightMarkers();
+        try {
+            const result = await collector.fetchRecommendations();
+            const segments = result.highlights[videoId];
+            if (!segments || !segments.length) return;
+
+            const video = this.getCurrentVideo();
+            if (!video || !video.duration || !isFinite(video.duration)) return;
+
+            const progressTrack = this.uiLayer.querySelector('.tm-progress') as HTMLElement;
+            if (!progressTrack) return;
+
+            for (const seg of segments) {
+                const midpoint = (seg.start + seg.end) / 2;
+                const pct = (midpoint / video.duration) * 100;
+                if (pct < 0 || pct > 100) continue;
+
+                const marker = document.createElement('div');
+                marker.className = 'tm-highlight-marker';
+                marker.style.left = pct + '%';
+                progressTrack.appendChild(marker);
+                this.highlightMarkers.push(marker);
+            }
+        } catch {
+            // 静默失败，不影响播放主流程
+        }
+    }
+
+    private clearHighlightMarkers() {
+        for (const m of this.highlightMarkers) {
+            m.remove();
+        }
+        this.highlightMarkers = [];
     }
 }

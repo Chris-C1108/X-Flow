@@ -13,7 +13,7 @@ export class VirtualList {
         this.container = document.createElement('div');
         this.container.className = 'vl-container';
         // background #000 保证背景黑底，隐藏其他节点
-        this.container.style.cssText = 'position: absolute; inset: 0; overflow: hidden; touch-action: none; background: #000; z-index: 10;';
+        this.container.style.cssText = 'position: absolute; inset: 0; overflow: hidden; touch-action: pan-x; background: #000; z-index: 10; overflow-anchor: none; contain: layout size style; height: 100dvh;';
         this.nodes = [];
 
         for (let i = 0; i < 3; i++) {

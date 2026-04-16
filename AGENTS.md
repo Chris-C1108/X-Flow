@@ -26,10 +26,19 @@ X-Flow/
 ├── AGENTS.md              # 本文件 — AI Agent 指南
 ├── vite.config.ts         # Vite + vite-plugin-monkey 配置
 ├── package.json           # npm 依赖
+├── .github/
+│   └── workflows/
+│       └── analyze.yml    # GitHub Actions 每日分析定时任务
+├── workers/               # Cloudflare Worker 后端
+│   ├── src/index.ts       # ⭐ Worker 路由 — /api/telemetry/* + /api/recommend
+│   ├── schema.sql         # D1 数据库表结构（4张表）
+│   └── wrangler.toml      # CF Worker 部署配置（含 D1 / KV 绑定）
+├── scripts/
+│   └── analyze.py         # Python 离线分析（高光提取 + 协同过滤 → 写回 D1）
 ├── .agents/
 │   ├── knowledge/         # 经验教训文件（详见下方 Experience Index）
 │   ├── dev-docs/          # PRD 等产品文档
-│   └── todo/              # 待办 & 已完成任务
+│   └── todo/              # 待办 & 已完成任务（含 v6.0.0_plan.md）
 └── src/
     ├── main.ts            # Entry point — 调用 Sandbox.initialize()
     ├── api/
@@ -50,7 +59,7 @@ X-Flow/
     ├── styles/
     │   └── player.css     # 全局样式 (OKLCH, CSS Variables, 动画)
     ├── telemetry/
-    │   └── Reporter.ts    # 分析上报 (placeholder)
+    │   └── EventCollector.ts  # ⭐ 遥测埋点 — 匿名ID/点赞/Session/高光拉取
     └── utils/
         ├── Dom.ts         # DOM 工具 (placeholder)
         ├── Format.ts      # 数字/时间格式化
@@ -84,6 +93,60 @@ npm run build            # 构建生产 .user.js 到 dist/
 4. 上下滑动验证视频切换流畅，无黑屏
 5. 点击频道切换 (Real ↔ Anime) → 验证无 CORS 错误、列表正常刷新
 6. 检查 DevTools Console 无 403 / NotSupportedError
+
+---
+
+## 📋 Progress Tracking — 进度跟踪管理
+
+### 当前版本状态
+
+| 版本 | 计划文档 | 当前阶段 | 整体进度 |
+|------|----------|----------|----------|
+| **v6.0.0** | [v6.0.0_plan.md](.agents/todo/v6.0.0_plan.md) | M2 ✅ 完成 / M3 — 数据管道验证 | 🔄 进行中 |
+
+### 状态标记规范
+
+在所有 `.agents/todo/` 下的计划文档中，任务状态使用以下标记：
+
+| 标记 | 含义 | 使用场景 |
+|------|------|----------|
+| `⬜` | 待开始 | 任务尚未启动 |
+| `🔄` | 进行中 | 当前正在开发或调试 |
+| `✅` | 完成 | 已验证通过，可交付 |
+| `❌` | 阻塞 | 有依赖未解除或发现技术障碍 |
+| `⏭️` | 跳过 | 本版本决定不实现，移入 Backlog |
+
+### AI Agent 进度更新规则 — MANDATORY
+
+> **每次完成一个任务后，AI Agent 必须执行以下操作，不得遗漏：**
+
+1. **更新任务状态标记**
+   - 将对应任务的 `⬜` 改为 `✅`（或其他适当状态）
+   - 同时更新"总览仪表板"中该里程碑的状态
+
+2. **更新 AGENTS.md 当前版本状态表**（即本节上方的表格）
+   - 更新"当前阶段"列为最新进行中的里程碑
+   - 如整个里程碑完成，进度更新为下一个里程碑
+
+3. **新增 Knowledge File（当遇到新 BUG 或新经验时）**
+   - 在 `.agents/knowledge/` 创建新文件
+   - 在本文件 Experience Index 注册新条目（ID 自增）
+
+4. **绝对禁止的行为**
+   - ❌ 不得在未完成 `npm run build` 验证前将任务标记为 `✅`
+   - ❌ 不得跳过"M0 验收标准"直接开始 M1 的工作
+   - ❌ 不得在任务进行中修改其他里程碑的任务内容（需先讨论再修改）
+
+### 里程碑完成标准
+
+每个里程碑的"验收标准"是完成的最低门槛，必须全部满足后才能推进到下一里程碑。验收时需在计划文档中对应位置记录实际验证结果。
+
+### 计划文档管理规则
+
+- 计划文档保存在 `.agents/todo/v{version}_plan.md`
+- 每个版本一个文档，禁止跨版本混写
+- 版本发布后，将计划文档重命名为 `v{version}_plan_DONE.md` 归档
+- Backlog 中的需求在下一版本计划制定时评估是否纳入
 
 ---
 
@@ -129,6 +192,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 05 | preload, buffer, slow, twimg, black screen | Tiered preload: current=auto, next after 2s, prev after 4s; clear timers on navigate | [video_preload_strategy.md](.agents/knowledge/video_preload_strategy.md) |
 | 08 | progress, swipe, touch, collision, region | Partition screen: use bottom 15% for progress/seeking; ignore vertical swiping in that area | [player_gesture_partitioning.md](.agents/knowledge/player_gesture_partitioning.md) |
 | 17 | hover play, mobile, touch, preview video, 移动端悬浮, 长按播放, touchstart, preventDefault | Long-press 450ms delay + `touchmove` scroll-cancel + `touchend` `preventDefault` when previewing | [mobile_touch_hover_preview.md](.agents/knowledge/mobile_touch_hover_preview.md) |
+| 20 | like, bookmark, favorite, 收藏, 点赞, localStorage, GM_setValue, 跨域, 持久化 | Use `GM_setValue`/`GM_getValue` for likes & bookmarks — cross-domain persistence; never use localStorage for shared state | [like_bookmark_gm_persistence.md](.agents/knowledge/like_bookmark_gm_persistence.md) |
 
 ---
 

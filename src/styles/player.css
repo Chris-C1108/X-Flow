@@ -30,6 +30,8 @@
             overscroll-behavior: none;           /* 禁止 iOS 橡皮筋回弹 */
             -webkit-text-size-adjust: 100%;      /* 禁止 Safari 横屏自动放大字体 */
             touch-action: manipulation;          /* 禁用双击缩放, 加速点击响应 */
+            height: 100dvh; width: 100dvw;       /* dvh 防止 Safari 地址栏伸缩导致布局抖动 */
+            position: fixed; inset: 0;           /* 锁定视口，彻底阻止 Safari 工具栏自动隐藏 */
         }
         body.theme-anime { --theme-accent: var(--accent-cyan); --theme-accent-subtle: var(--accent-cyan-subtle); }
 
@@ -42,7 +44,7 @@
         .retry-btn:hover { background: var(--bg-surface-hover); border-color: rgba(255,255,255,0.12); transform: scale(1.02); }
         .retry-btn:active { transform: scale(0.98); }
 
-        .app-layout { display: flex; height: 100vh; width: 100vw; }
+        .app-layout { display: flex; height: 100dvh; width: 100dvw; position: fixed; inset: 0; }
         .sidebar { width: 280px; flex-shrink: 0; background: var(--bg-surface); border-right: 1px solid rgba(255,255,255,0.03); display: flex; flex-direction: column; padding: 4vh 2vw; z-index: 100; }
         .brand { font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 2.5rem; color: var(--text-100); display: flex; align-items: center; gap: 8px; }
         .brand::after { content: ''; display: block; width: 6px; height: 6px; background: var(--theme-accent); border-radius: 50%; transition: background 0.5s ease; }
@@ -57,7 +59,7 @@
         .nav-item.active::before { content: ''; position: absolute; left: 0; top: 25%; bottom: 25%; width: 3px; background: var(--theme-accent); border-radius: 0 3px 3px 0; transition: background 0.5s ease; }
 
         .main-container { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; scroll-behavior: smooth; }
-        .topbar { position: sticky; top: 0; z-index: 50; padding: 3vh 4vw; background: transparent; display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; }
+        .topbar { position: sticky; top: 0; z-index: 50; padding: calc(env(safe-area-inset-top, 0px) + 1.5vh) 4vw 1.5vh; background: transparent; display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; }
         .content-pad { padding: 0 4vw 4rem; }
         .pulse-wave { position: absolute; inset: 0; z-index: -1; opacity: 0; background: radial-gradient(ellipse at top center, var(--theme-accent) 0%, transparent 60%); transform: scale(0.95); pointer-events: none; transition: background 0.5s ease; }
         .pulse-wave.pulse-anim { animation: channelPulse 0.6s ease-out; }
@@ -178,7 +180,7 @@
         @media (max-width: 1024px) { .hc-title { font-size: 1.1rem; } }
         @media (max-width: 768px) {
             .app-layout { flex-direction: column; } .sidebar { display: none; }
-            .topbar { padding: 0.75rem 0; border-bottom: none; justify-content: center; } .sort-filters { display: none; }
+            .topbar { padding: calc(env(safe-area-inset-top, 0px) + 0.5rem) 0 0.5rem; border-bottom: none; justify-content: center; } .sort-filters { display: none; }
             .topbar-center { width: 100%; justify-content: space-between; padding: 0 14px; }
             .mobile-menu-btn-wrap { display: block; }
             .content-pad { padding: 1rem 1.2rem 6rem; }
@@ -193,8 +195,8 @@
         }
 
         /* TikTok播放器 Modal 样式 */
-        html.tm-tiktok-open, body.tm-tiktok-open { overflow: hidden !important; touch-action: none !important; overscroll-behavior: none !important; height: 100% !important; background: #000 !important; }
-        #tm-tiktok-modal { position: fixed; inset: 0; z-index: 2147483646; display: none; background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+        html.tm-tiktok-open, body.tm-tiktok-open { overflow: hidden !important; touch-action: none !important; overscroll-behavior: none !important; height: 100dvh !important; background: #000 !important; }
+        #tm-tiktok-modal { position: fixed; inset: 0; z-index: 2147483646; display: none; background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-user-select: none; user-select: none; touch-action: pan-x; overflow-anchor: none; contain: layout size style; height: 100dvh; }
         #tm-tiktok-modal.active { display: block; animation: tm-modal-in 0.35s var(--ease-smooth) forwards; }
         @keyframes tm-modal-in { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
         .tm-video-stage { position: absolute; inset: 0; overflow: hidden; background: #000 center center / cover no-repeat; }
@@ -253,6 +255,57 @@
         .tm-switch { width: 44px; height: 26px; border-radius: 999px; background: rgba(255,255,255,.2); position: relative; transition: background 0.3s var(--ease-smooth); } .tm-switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: transform .3s var(--ease-smooth); }
         .tm-setting-item.active .tm-switch { background: var(--theme-accent); } .tm-setting-item.active .tm-switch::after { transform: translateX(18px); }
         
+        /* ── M1-1: 倍速选择面板 ─────────────────────────────────── */
+        .tm-speed-panel { position: absolute; top: calc(env(safe-area-inset-top) + 58px); right: 60px; z-index: 40; display: none; background: rgba(20,20,20,0.95); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid var(--glass-border); border-radius: 14px; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.5); pointer-events: auto; }
+        .tm-speed-panel.active { display: block; animation: tm-modal-in 0.2s var(--ease-smooth) forwards; }
+        .tm-speed-option { display: block; width: 100%; padding: 12px 24px; border: none; background: transparent; color: var(--text-200); font-family: var(--font-body); font-size: 14px; font-weight: 600; text-align: center; cursor: pointer; transition: all 0.2s ease; }
+        .tm-speed-option:hover { background: rgba(255,255,255,0.06); color: #fff; }
+        .tm-speed-option.active { color: var(--theme-accent); background: var(--theme-accent-subtle); }
+        .tm-speed-option + .tm-speed-option { border-top: 1px solid rgba(255,255,255,0.06); }
+        .tm-speed-btn { min-width: 40px; }
+
+        /* ── M1-4: 作者主页按钮 ───────────────────────────────────── */
+        .tm-action.author .icon { background: rgba(80, 180, 255, 0.12); border-color: rgba(80, 180, 255, 0.2); }
+        .tm-action.author:hover .icon { background: rgba(80, 180, 255, 0.2); }
+
+        /* ── M2-2: 双击快进/快退反馈 ──────────────────────────── */
+        .tm-doubletap-feedback { position: absolute; top: 50%; z-index: 30; display: flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 999px; background: rgba(0,0,0,0.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font-size: 14px; font-weight: 600; color: #fff; pointer-events: none; opacity: 0; }
+        .tm-doubletap-feedback.left { left: 15%; transform: translate(-50%, -50%); animation: tm-doubletap-pop-left 0.6s ease forwards; }
+        .tm-doubletap-feedback.right { right: 15%; transform: translate(50%, -50%); animation: tm-doubletap-pop-right 0.6s ease forwards; }
+        .tm-doubletap-feedback svg { width: 18px; height: 18px; fill: #fff; }
+        @keyframes tm-doubletap-pop-left { 0% { opacity: 0; scale: 0.7; } 30% { opacity: 1; scale: 1.05; } 100% { opacity: 0; scale: 1; } }
+        @keyframes tm-doubletap-pop-right { 0% { opacity: 0; scale: 0.7; } 30% { opacity: 1; scale: 1.05; } 100% { opacity: 0; scale: 1; } }
+
+        /* ── M2-3: 进度条高光打点 ──────────────────────────────── */
+        .tm-highlight-marker { position: absolute; top: 50%; width: 6px; height: 6px; border-radius: 50%; background: var(--theme-accent); transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 6px var(--theme-accent); z-index: 5; opacity: 0.85; transition: opacity 0.3s ease; }
+
+        /* ── M2-4: 评论按钮 ────────────────────────────────────── */
+        .tm-action.comment .icon { background: rgba(160, 160, 255, 0.12); border-color: rgba(160, 160, 255, 0.2); }
+        .tm-action.comment:hover .icon { background: rgba(160, 160, 255, 0.2); }
+
+        /* ── M2-5: 评论面板 ────────────────────────────────────── */
+        .tm-comment-panel { position: absolute; bottom: 0; left: 0; right: 0; height: 60vh; background: rgba(20,20,24,0.98); border-top-left-radius: 16px; border-top-right-radius: 16px; z-index: 100; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); display: flex; flex-direction: column; box-shadow: 0 -4px 20px rgba(0,0,0,0.5); pointer-events: auto; }
+        .tm-comment-panel.active { transform: translateY(0); }
+        .tm-comment-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); font-weight: 600; font-size: 15px; }
+        .tm-comment-close { background: none; border: none; color: #fff; cursor: pointer; padding: 4px; display: flex; align-items: center; opacity: 0.8; transition: opacity 0.2s; }
+        .tm-comment-close:hover { opacity: 1; }
+        .tm-comment-close svg { width: 22px; height: 22px; fill: currentColor; }
+        .tm-comment-body { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; overscroll-behavior: contain; }
+        .tm-comment-item { display: flex; flex-direction: column; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .tm-comment-item:last-child { border-bottom: none; }
+        .tm-comment-time { font-size: 11px; color: var(--text-400); }
+        .tm-comment-content { font-size: 13px; color: var(--text-100); line-height: 1.5; word-break: break-all; }
+        .tm-comment-footer { padding: 12px 20px calc(env(safe-area-inset-bottom) + 12px); border-top: 1px solid rgba(255,255,255,0.06); display: flex; gap: 12px; background: rgba(20,20,24,1); }
+        .tm-comment-input { flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 14px; color: #fff; font-size: 14px; outline: none; transition: border-color 0.2s; }
+        .tm-comment-input:focus { border-color: var(--theme-accent); }
+        .tm-comment-send { background: var(--theme-accent); color: #fff; border: none; border-radius: 8px; padding: 0 16px; font-weight: 600; cursor: pointer; opacity: 0.9; transition: opacity 0.2s, transform 0.2s; }
+        .tm-comment-send:hover { opacity: 1; }
+        .tm-comment-send:active { transform: scale(0.95); }
+        .tm-comment-send:disabled { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.3); cursor: not-allowed; transform: none; }
+        .tm-comment-empty { text-align: center; color: var(--text-400); padding: 30px 0; font-size: 13px; }
+        .tm-comment-loading { display: flex; justify-content: center; padding: 30px 0; }
+        .tm-comment-loading .spinner { width: 24px; height: 24px; border: 2px solid rgba(255,255,255,0.1); border-top-color: var(--theme-accent); border-radius: 50%; animation: tm-spin 0.8s linear infinite; }
+
         .tm-swipe-mask { position: absolute; inset: 0; z-index: 5; cursor: pointer; pointer-events: auto; }
         
         @media (max-width: 768px) {
