@@ -4,9 +4,9 @@ compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
 # ── 自定义域名配置 ───────────────────────────────────────────────
-routes = [
-  { pattern = "loadingi.cloudns.be", custom_domain = true }
-]
+# routes = [
+#   { pattern = "custom-domain.com", custom_domain = true }
+# ]
 
 # ── D1 数据库绑定 ──────────────────────────────────────────────
 [[d1_databases]]
@@ -24,4 +24,4 @@ id      = "ade582e5b7894b7da5a498bf20e6dd16"         # wrangler kv namespace cre
 # 2. 初始化表:  wrangler d1 execute xflow-telemetry --file=schema.sql
 # 3. 创建 KV:  wrangler kv namespace create xflow-kv
 # 4. 部署:     wrangler deploy
-# 5. 测试:     curl https://loadingi.cloudns.be/api/ping
+# 5. 测试:     curl https://xflow-telemetry.chen-m1108.workers.dev/api/ping

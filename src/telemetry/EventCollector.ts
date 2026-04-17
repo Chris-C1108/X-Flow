@@ -16,7 +16,7 @@
 
 // ── 配置 ──────────────────────────────────────────────────────────
 // 🔧 部署 Cloudflare Worker 后，将此 URL 替换为真实地址
-const WORKER_URL = 'https://loadingi.cloudns.be';
+const WORKER_URL = 'https://xflow-telemetry.chen-m1108.workers.dev';
 
 // Token 盐值（与 Worker 端保持一致）
 const TOKEN_SALT = 'XFLOW_v6_SECRET';
