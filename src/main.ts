@@ -22,6 +22,20 @@ if ((window as any).__XFLOW_INIT__) throw new Error('X-Flow: already initialized
 // ── iframe 守卫 ─────────────────────────────────────────────
 if (window.self !== window.top) throw new Error('X-Flow: abort in iframe');
 
+// ── 极早期遮罩：在 document.open() 前先盖住当前文档，尽量压住源站闪屏 ──
+try {
+    const root = document.documentElement;
+    if (root && !document.getElementById('xflow-preboot-veil-style')) {
+        root.style.background = '#0D0D12';
+        root.style.overflow = 'hidden';
+
+        const veilStyle = document.createElement('style');
+        veilStyle.id = 'xflow-preboot-veil-style';
+        veilStyle.textContent = 'html::before{content:"";position:fixed;inset:0;z-index:2147483647;background:#0D0D12;pointer-events:none;}';
+        (document.head || root).appendChild(veilStyle);
+    }
+} catch (_) {}
+
 // ═══════════════════════════════════════════════════════════════
 // Layer 1: Pre-emptive 防御 — 在 document.open() 之前执行
 // 目标: 让 React/Next.js zombie 代码无法产生任何导航副作用

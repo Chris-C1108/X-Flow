@@ -102,7 +102,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 
 | 版本 | 计划文档 | 当前阶段 | 整体进度 |
 |------|----------|----------|----------|
-| **v6.0.0** | [v6.0.0_plan.md](.agents/todo/v6.0.0_plan.md) | M2 ✅ 完成 / M3 — 数据管道验证 | 🔄 进行中 |
+| **v6.0.0** | [v6.0.0_plan.md](.agents/todo/v6.0.0_plan.md) | M4 — 推荐系统 UI 闭环 | 🔄 进行中 |
 
 ### 状态标记规范
 
@@ -193,6 +193,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 08 | progress, swipe, touch, collision, region | Partition screen: use bottom 15% for progress/seeking; ignore vertical swiping in that area | [player_gesture_partitioning.md](.agents/knowledge/player_gesture_partitioning.md) |
 | 17 | hover play, mobile, touch, preview video, 移动端悬浮, 长按播放, touchstart, preventDefault | Long-press 450ms delay + `touchmove` scroll-cancel + `touchend` `preventDefault` when previewing | [mobile_touch_hover_preview.md](.agents/knowledge/mobile_touch_hover_preview.md) |
 | 20 | like, bookmark, favorite, 收藏, 点赞, localStorage, GM_setValue, 跨域, 持久化 | Use `GM_setValue`/`GM_getValue` for likes & bookmarks — cross-domain persistence; never use localStorage for shared state | [like_bookmark_gm_persistence.md](.agents/knowledge/like_bookmark_gm_persistence.md) |
+| 21 | hero carousel, hidden video, preload, seek slow, audio only, frame freeze, buffer contention, 离屏视频, 进度跳转卡顿 | Only the visible hero card may hold `src`/play; unload hidden hero videos before player open | [hero_video_bandwidth_priority.md](.agents/knowledge/hero_video_bandwidth_priority.md) |
 
 ---
 

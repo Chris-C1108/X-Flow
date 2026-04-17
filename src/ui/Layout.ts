@@ -17,6 +17,7 @@ export class Layout {
     private pool: PoolManager;
     private rootElement: HTMLElement | null = null;
     private player: TikTokMode;
+    private heroCarouselPos: number = 1;
 
     /** Hero carousel: top-3 data per range */
     private heroData: Map<string, any[]> = new Map();
@@ -294,6 +295,8 @@ export class Layout {
                 if (card) {
                     const indexAttr = card.getAttribute('data-index');
                     if (indexAttr) {
+                        clearHoverVideo();
+                        this.pauseAllHeroVideos(true);
                         const index = parseInt(indexAttr);
                         this.player.openModal(index);
                     }
@@ -638,7 +641,7 @@ export class Layout {
 
     /**
      * Start auto-loop: each range cycles top1→top2→top3 every 10 seconds.
-     * Each item plays its video for 10 seconds.
+     * 只有当前可见卡片的视频会真正加载播放，隐藏卡片只更新文案和缩略图状态。
      */
     private startHeroAutoLoop() {
         // Clear existing timers
@@ -651,9 +654,6 @@ export class Layout {
             const items = this.heroData.get(range.id);
             if (!items || items.length <= 1) continue; // No rotation needed for 0 or 1 item
 
-            // Start playing first video immediately
-            this.playHeroVideo(range.id, items[0]);
-
             const timer = setInterval(() => {
                 const currentSub = this.heroSubIndex.get(range.id) ?? 0;
                 const nextSub = (currentSub + 1) % items.length;
@@ -661,52 +661,87 @@ export class Layout {
 
                 const nextItem = items[nextSub];
                 this.populateHeroCard(range.id, nextItem, nextSub);
-                this.playHeroVideo(range.id, nextItem);
 
                 // Also sync clone card if this range is daily or all
                 if (range.id === 'all') {
                     this.populateHeroCard('clone-prev', nextItem, nextSub);
-                    this.playHeroCloneVideo('clone-prev', nextItem);
                 } else if (range.id === 'daily') {
                     this.populateHeroCard('clone-next', nextItem, nextSub);
-                    this.playHeroCloneVideo('clone-next', nextItem);
                 }
+
+                this.syncVisibleHeroPlayback();
             }, INTERVAL);
 
             this.heroTimers.set(range.id, timer);
         }
+
+        this.syncVisibleHeroPlayback();
     }
 
     /**
-     * Play 10-second video preview on a real hero card.
+     * 只允许当前可见卡片的视频占用带宽；其余全部卸载，避免和播放器抢缓存。
      */
-    private playHeroVideo(rangeId: string, item: any) {
-        const video = document.getElementById(`hc-video-${rangeId}`) as HTMLVideoElement | null;
-        if (!video || !item?.url) return;
+    private syncVisibleHeroPlayback() {
+        const activeKey = this.getHeroSlotKey(this.heroCarouselPos);
+        const allKeys = ['daily', 'weekly', 'monthly', 'all', 'clone-prev', 'clone-next'];
 
-        video.src = item.url;
-        video.currentTime = 0;
-        video.muted = true;
-        video.playsInline = true;
-        video.load();
-        video.classList.add('playing');
-        video.play().catch(() => {/* autoplay blocked */ });
+        allKeys.forEach((key) => {
+            if (key === activeKey) {
+                this.playHeroVideo(key, this.getHeroItemForKey(key));
+            } else {
+                this.unloadHeroVideo(key);
+            }
+        });
     }
 
     /**
-     * Play video on clone cards (mirror of real).
+     * 当前 slot 对应的数据项。
      */
-    private playHeroCloneVideo(cloneKey: string, item: any) {
-        const video = document.getElementById(`hc-video-${cloneKey}`) as HTMLVideoElement | null;
+    private getHeroItemForKey(key: string) {
+        const rangeKey = key === 'clone-prev' ? 'all' : (key === 'clone-next' ? 'daily' : key);
+        const items = this.heroData.get(rangeKey) || [];
+        const subIndex = this.heroSubIndex.get(rangeKey) ?? 0;
+        return items[subIndex] || null;
+    }
+
+    private getHeroSlotKey(pos: number) {
+        return ['clone-prev', 'daily', 'weekly', 'monthly', 'all', 'clone-next'][pos] || 'daily';
+    }
+
+    private playHeroVideo(key: string, item: any) {
+        const video = document.getElementById(`hc-video-${key}`) as HTMLVideoElement | null;
         if (!video || !item?.url) return;
 
-        video.src = item.url;
-        video.currentTime = 0;
+        const itemId = String(item.id ?? item.url);
+        const needsNewSource = video.dataset.itemId !== itemId;
+
+        video.preload = 'auto';
         video.muted = true;
         video.playsInline = true;
-        video.load();
         video.classList.add('playing');
+
+        if (needsNewSource) {
+            video.src = item.url;
+            video.dataset.itemId = itemId;
+            video.currentTime = 0;
+        }
+
         video.play().catch(() => { });
+    }
+
+    private unloadHeroVideo(key: string) {
+        const video = document.getElementById(`hc-video-${key}`) as HTMLVideoElement | null;
+        if (!video) return;
+
+        video.pause();
+        video.classList.remove('playing');
+        video.preload = 'none';
+
+        if (video.currentSrc || video.getAttribute('src')) {
+            video.removeAttribute('src');
+            delete video.dataset.itemId;
+            video.load();
+        }
     }
 
     /** Infinite-loop carousel — 6 slots: [clone-all | d | w | m | a | clone-daily] */
@@ -717,18 +752,19 @@ export class Layout {
         const REAL = 4;
         const TOTAL = 6; // 2 clones + 4 real
         const STEP = 100 / TOTAL; // ≈ 16.6667%
-        let pos = 1; // start at real-daily (slot index 1)
+        this.heroCarouselPos = 1; // start at real-daily (slot index 1)
 
         const dots = Array.from(document.querySelectorAll('.hc-dot'));
 
         const applyPos = (animated: boolean) => {
             track.style.transition = animated ? 'transform 0.55s var(--ease-smooth)' : 'none';
-            track.style.transform = `translateX(-${pos * STEP}%)`;
+            track.style.transform = `translateX(-${this.heroCarouselPos * STEP}%)`;
+            this.syncVisibleHeroPlayback();
         };
 
         const syncDots = () => {
             // real cards: pos 1→dot0, 2→dot1, 3→dot2, 4→dot3 (clones map to their mirror)
-            const di = ((pos - 1 + REAL) % REAL);
+            const di = ((this.heroCarouselPos - 1 + REAL) % REAL);
             dots.forEach((d, i) => d.classList.toggle('active', i === di));
         };
 
@@ -737,27 +773,29 @@ export class Layout {
         syncDots();
 
         const advance = (delta: number) => {
-            pos += delta;
+            this.heroCarouselPos += delta;
             applyPos(true);
             syncDots();
         };
 
         // After slide animation ends: if we're on a clone, instant-jump to real mirror
         track.addEventListener('transitionend', () => {
-            if (pos <= 0) {
-                pos = REAL;        // clone-prev (all) → jump to real all (slot 4)
+            if (this.heroCarouselPos <= 0) {
+                this.heroCarouselPos = REAL;        // clone-prev (all) → jump to real all (slot 4)
                 applyPos(false);
-            } else if (pos >= TOTAL - 1) {
-                pos = 1;           // clone-next (daily) → jump to real daily (slot 1)
+            } else if (this.heroCarouselPos >= TOTAL - 1) {
+                this.heroCarouselPos = 1;           // clone-next (daily) → jump to real daily (slot 1)
                 applyPos(false);
             }
+
+            syncDots();
         });
 
         document.getElementById('hc-prev')?.addEventListener('click', () => advance(-1));
         document.getElementById('hc-next')?.addEventListener('click', () => advance(1));
 
         dots.forEach((dot, i) => dot.addEventListener('click', () => {
-            pos = i + 1; // dot0 → pos1, dot1 → pos2, ...
+            this.heroCarouselPos = i + 1; // dot0 → pos1, dot1 → pos2, ...
             applyPos(true);
             syncDots();
         }));
@@ -803,7 +841,7 @@ export class Layout {
         log(`Hero card clicked: range=${range}, startIndex=${startIndex}`);
 
         // Pause all hero videos while in player
-        this.pauseAllHeroVideos();
+        this.pauseAllHeroVideos(true);
 
         // Sync range UI (sidebar + mobile dropdown)
         this.syncRangeUI(range);
@@ -818,16 +856,20 @@ export class Layout {
     /**
      * Pause all hero card preview videos.
      */
-    private pauseAllHeroVideos() {
-        for (const range of Layout.HERO_RANGES) {
-            const video = document.getElementById(`hc-video-${range.id}`) as HTMLVideoElement | null;
-            if (video) video.pause();
-        }
-        // Also pause clones
-        const clonePrev = document.getElementById('hc-video-clone-prev') as HTMLVideoElement | null;
-        const cloneNext = document.getElementById('hc-video-clone-next') as HTMLVideoElement | null;
-        if (clonePrev) clonePrev.pause();
-        if (cloneNext) cloneNext.pause();
+    private pauseAllHeroVideos(unload: boolean = false) {
+        const keys = ['daily', 'weekly', 'monthly', 'all', 'clone-prev', 'clone-next'];
+        keys.forEach((key) => {
+            if (unload) {
+                this.unloadHeroVideo(key);
+                return;
+            }
+
+            const video = document.getElementById(`hc-video-${key}`) as HTMLVideoElement | null;
+            if (video) {
+                video.pause();
+                video.classList.remove('playing');
+            }
+        });
 
         // Stop auto-loop timers
         this.heroTimers.forEach(t => clearInterval(t));
@@ -838,15 +880,6 @@ export class Layout {
      * Resume hero video auto-loop after player closes.
      */
     private resumeHeroVideos() {
-        // Resume current video for each range
-        for (const range of Layout.HERO_RANGES) {
-            const items = this.heroData.get(range.id);
-            const subIdx = this.heroSubIndex.get(range.id) ?? 0;
-            if (items && items[subIdx]) {
-                this.playHeroVideo(range.id, items[subIdx]);
-            }
-        }
-        // Restart auto-loop timers
         this.startHeroAutoLoop();
     }
 

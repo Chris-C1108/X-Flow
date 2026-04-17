@@ -674,7 +674,6 @@ export class TikTokMode {
             video.setAttribute('data-index', logicalIndex.toString());
             video.loop = this.loop;
             video.preload = (logicalIndex === this.currentIndex) ? 'auto' : 'metadata';
-            video.load();
             thumb.src = item.thumbnail || '';
             node.style.backgroundImage = `url("${escapeCSSUrl(item.thumbnail || '')}")`;
             node.style.backgroundSize = 'cover';
