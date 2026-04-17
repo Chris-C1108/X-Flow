@@ -16,12 +16,10 @@ export default defineConfig(({ command }) => ({
         author: 'Chris_C',
         license: 'Apache-2.0',
         match: [
-          'https://twitter-ero-video-ranking.com/*',
           'https://x-ero-anime.com/*',
           'https://truvaze.com/*'
         ],
         connect: [
-          'twitter-ero-video-ranking.com',
           'x-ero-anime.com',
           'video.twimg.com',
           'pbs.twimg.com',
