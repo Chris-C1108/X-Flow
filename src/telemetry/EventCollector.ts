@@ -15,8 +15,8 @@
  */
 
 // ── 配置 ──────────────────────────────────────────────────────────
-// 🔧 部署 Cloudflare Worker 后，将此 URL 替换为真实地址
-const WORKER_URL = 'https://xflow-telemetry.chen-m1108.workers.dev';
+const WORKER_URL_PRIMARY = 'https://x-flow.ccwu.cc';
+const WORKER_URL_FALLBACK = 'https://xflow-telemetry.chen-m1108.workers.dev';
 
 // Token 盐值（与 Worker 端保持一致）
 const TOKEN_SALT = 'XFLOW_v6_SECRET';
@@ -89,12 +89,13 @@ function getOrCreateAnonId(): string {
 /**
  * 向 Cloudflare Worker 发送 POST 请求（静默失败）
  */
-function postToWorker(path: string, body: object): void {
+function postToWorker(path: string, body: object, isFallback = false): void {
     const ts = Date.now();
+    const baseUrl = isFallback ? WORKER_URL_FALLBACK : WORKER_URL_PRIMARY;
     try {
         GM_xmlhttpRequest({
             method: 'POST',
-            url: `${WORKER_URL}${path}`,
+            url: `${baseUrl}${path}`,
             headers: {
                 'Content-Type': 'application/json',
                 'X-XFlow-Token': genToken(ts),
@@ -102,12 +103,20 @@ function postToWorker(path: string, body: object): void {
             },
             data: JSON.stringify(body),
             timeout: 8000,
-            onload: () => { /* 成功，静默 */ },
-            onerror: () => { /* 网络错误，静默 */ },
-            ontimeout: () => { /* 超时，静默 */ },
+            onload: (res) => {
+                if (res.status !== 200 && !isFallback) {
+                    postToWorker(path, body, true);
+                }
+            },
+            onerror: () => {
+                if (!isFallback) postToWorker(path, body, true);
+            },
+            ontimeout: () => {
+                if (!isFallback) postToWorker(path, body, true);
+            },
         });
     } catch (e) {
-        // GM_xmlhttpRequest 本身异常（极少），静默处理
+        if (!isFallback) postToWorker(path, body, true);
     }
 }
 
@@ -240,37 +249,48 @@ export class EventCollector {
 
     // ── 推荐结果拉取 ─────────────────────────────────────────────
 
-    /**
-     * 从 Worker 拉取该用户的推荐视频 + 高光时刻
-     * 返回空值（不抛出），由调用方决定是否展示
-     */
     fetchRecommendations(): Promise<RecommendResult> {
-        const ts = Date.now();
         return new Promise<RecommendResult>((resolve) => {
             const empty: RecommendResult = { rec: [], highlights: {} };
-            try {
-                GM_xmlhttpRequest({
-                    method: 'GET',
-                    url: `${WORKER_URL}/api/recommend?anon_id=${encodeURIComponent(this.anonId)}`,
-                    headers: {
-                        'X-XFlow-Token': genToken(ts),
-                        'X-XFlow-Ts': String(ts),
-                    },
-                    responseType: 'json',
-                    timeout: 5000,
-                    onload: (res) => {
-                        if (res.status === 200 && res.response) {
-                            resolve(res.response as RecommendResult);
-                        } else {
-                            resolve(empty);
-                        }
-                    },
-                    onerror: () => resolve(empty),
-                    ontimeout: () => resolve(empty),
+            
+            const doRequest = (isFallback: boolean): Promise<RecommendResult> => {
+                return new Promise((innerResolve, innerReject) => {
+                    const ts = Date.now();
+                    const baseUrl = isFallback ? WORKER_URL_FALLBACK : WORKER_URL_PRIMARY;
+                    try {
+                        GM_xmlhttpRequest({
+                            method: 'GET',
+                            url: `${baseUrl}/api/recommend?anon_id=${encodeURIComponent(this.anonId)}`,
+                            headers: {
+                                'X-XFlow-Token': genToken(ts),
+                                'X-XFlow-Ts': String(ts),
+                            },
+                            responseType: 'json',
+                            timeout: 5000,
+                            onload: (res) => {
+                                if (res.status === 200 && res.response) {
+                                    innerResolve(res.response as RecommendResult);
+                                } else {
+                                    innerReject();
+                                }
+                            },
+                            onerror: innerReject,
+                            ontimeout: innerReject,
+                        });
+                    } catch {
+                        innerReject();
+                    }
                 });
-            } catch {
-                resolve(empty);
-            }
+            };
+
+            doRequest(false)
+                .then(resolve)
+                .catch(() => {
+                    // 仅当 Primary 失败时尝试 Fallback
+                    doRequest(true)
+                        .then(resolve)
+                        .catch(() => resolve(empty));
+                });
         });
     }
 

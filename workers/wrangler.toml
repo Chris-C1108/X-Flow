@@ -4,9 +4,9 @@ compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
 # ── 自定义域名配置 ───────────────────────────────────────────────
-# routes = [
-#   { pattern = "custom-domain.com", custom_domain = true }
-# ]
+routes = [
+  { pattern = "x-flow.ccwu.cc", custom_domain = true }
+]
 
 # ── D1 数据库绑定 ──────────────────────────────────────────────
 [[d1_databases]]
