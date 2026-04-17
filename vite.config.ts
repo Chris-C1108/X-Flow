@@ -26,6 +26,8 @@ export default defineConfig(({ command }) => ({
           'video.twimg.com',
           'pbs.twimg.com',
           'truvaze.com',
+          'x-flow.ccwu.cc',
+          'xflow-telemetry.chen-m1108.workers.dev',
           '*'
         ],
         grant: ['GM_xmlhttpRequest', 'GM_setValue', 'GM_getValue', 'GM_openInTab'],
