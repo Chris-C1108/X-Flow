@@ -16,8 +16,8 @@ export default defineConfig(({ command }) => ({
         author: 'Chris_C',
         license: 'Apache-2.0',
         match: [
-          'https://x-ero-anime.com/*',
-          'https://truvaze.com/*'
+          '*://x-ero-anime.com/*',
+          '*://truvaze.com/*'
         ],
         connect: [
           'x-ero-anime.com',
