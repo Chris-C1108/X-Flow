@@ -25,6 +25,7 @@ const earlyBootstrapBanner = `;(() => {
 export default defineConfig(({ command }) => ({
   build: {
     sourcemap: false,
+    outDir: 'dist/userscript',
     rollupOptions: {
       output: {
         banner: earlyBootstrapBanner,
@@ -51,6 +52,7 @@ export default defineConfig(({ command }) => ({
           'pbs.twimg.com',
           'truvaze.com',
           'x-flow.ccwu.cc',
+          'app.x-flow.ccwu.cc',
           'xflow-telemetry.chen-m1108.workers.dev',
           '*'
         ],
@@ -59,13 +61,10 @@ export default defineConfig(({ command }) => ({
         noframes: true,
       },
     }),
-    // ── 混淆加密 ── 仅生产构建 ──────────────────────────────────────
     ...(command === 'build' ? [
       obfuscator({
-        // global:true 对整个 bundle 进行混淆（单文件产物最有效）
         global: true,
         options: {
-          // 字符串混淆 — 提取到旋转数组并 base64 编码
           stringArray: true,
           stringArrayEncoding: ['base64'],
           stringArrayThreshold: 0.75,
@@ -73,29 +72,18 @@ export default defineConfig(({ command }) => ({
           stringArrayShuffle: true,
           splitStrings: true,
           splitStringsChunkLength: 8,
-
-          // 控制流混淆（适度，避免体积暴增）
           controlFlowFlattening: true,
           controlFlowFlatteningThreshold: 0.35,
-
-          // 死代码注入
           deadCodeInjection: true,
           deadCodeInjectionThreshold: 0.15,
-
-          // 标识符混淆
           identifierNamesGenerator: 'hexadecimal',
-          renameGlobals: false,      // 不重命名全局 (保护 window/document/GM_*)
-          renameProperties: false,   // 不重命名属性 (避免破坏 DOM API)
-
-          // 保护 GM_ API 不被重命名
+          renameGlobals: false,
+          renameProperties: false,
           reservedNames: ['^GM_', '^unsafeWindow$'],
-
-          // 数字混淆、简化
           numbersToExpressions: true,
           simplify: true,
-          transformObjectKeys: false, // 不转 key（避免破坏 CSS class 字符串匹配）
-
-          selfDefending: false,  // 沙盒环境中 self-defending 不安全
+          transformObjectKeys: false,
+          selfDefending: false,
           sourceMap: false,
         },
       }),

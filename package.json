@@ -4,8 +4,13 @@
   "version": "5.2.4",
   "type": "module",
   "scripts": {
-    "dev": "vite --host",
-    "build": "vite build"
+    "dev": "vite --config vite.config.userscript.ts --host",
+    "dev:userscript": "vite --config vite.config.userscript.ts --host",
+    "dev:web": "vite --config vite.config.web.ts --host",
+    "build": "vite build --config vite.config.userscript.ts",
+    "build:userscript": "vite build --config vite.config.userscript.ts",
+    "build:web": "vite build --config vite.config.web.ts",
+    "build:all": "npm run build:userscript && npm run build:web"
   },
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^1.2.0",

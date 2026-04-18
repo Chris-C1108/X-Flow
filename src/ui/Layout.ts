@@ -130,12 +130,14 @@ export class Layout {
             isAnimeOnly: !q.isAnimeOnly,
             range: q.range,
             sort: q.sort,
+            perPage: q.perPage ?? 50,
         };
 
         const sameChannelOtherRange: QueryState = {
             isAnimeOnly: q.isAnimeOnly,
             range: nextRange,
             sort: q.sort,
+            perPage: q.perPage ?? 50,
         };
 
         // Sequential preloads to avoid 429

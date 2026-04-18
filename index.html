@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+    <meta name="referrer" content="no-referrer">
+    <title>X-Flow</title>
+    <style>
+        html, body { margin: 0; padding: 0; overflow: hidden; width: 100dvw; height: 100dvh; background: #0D0D12; }
+    </style>
+</head>
+<body>
+    <div id="xflow-app-root" style="width:100%;height:100%;background:var(--bg-base,#0D0D12);color:var(--text-100,#fff);overflow:hidden;position:relative"></div>
+    <div id="xflow-splash" style="
+        position:fixed;inset:0;z-index:2147483647;
+        background:linear-gradient(160deg,#0D0D12 0%,#131320 40%,#0D0D12 100%);
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#fff;
+        transition:opacity 0.6s cubic-bezier(0.16,1,0.3,1),transform 0.6s cubic-bezier(0.16,1,0.3,1);
+        will-change:opacity,transform;
+    ">
+        <div style="position:absolute;width:260px;height:260px;border-radius:50%;
+            background:radial-gradient(circle,rgba(130,80,255,0.15) 0%,transparent 70%);
+            filter:blur(60px);pointer-events:none;animation:xf-glow 3s ease-in-out infinite alternate;"></div>
+        <svg viewBox="0 0 24 24" width="56" height="56" fill="url(#splash-grad)" style="position:relative;filter:drop-shadow(0 0 24px rgba(130,80,255,0.4));animation:xf-float 2.5s ease-in-out infinite;">
+            <defs><linearGradient id="splash-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#00F0FF"/><stop offset="100%" stop-color="#FF1053"/></linearGradient></defs>
+            <path d="M12 2L2 22h20L12 2zm0 6l6 12H6l6-12z"/>
+        </svg>
+        <div style="margin-top:24px;font-size:28px;font-weight:800;letter-spacing:2px;
+            background:linear-gradient(135deg,#fff 0%,rgba(255,255,255,0.6) 100%);
+            -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+            background-clip:text;">X-FLOW</div>
+        <div style="margin-top:8px;font-size:12px;letter-spacing:4px;color:rgba(255,255,255,0.35);text-transform:uppercase;">极境流媒体排行榜</div>
+        <div id="xflow-splash-status" style="margin-top:40px;font-size:13px;color:rgba(255,255,255,0.5);letter-spacing:1px;">正在初始化 ···</div>
+        <div style="margin-top:16px;width:180px;height:2px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;">
+            <div id="xflow-splash-bar" style="width:0%;height:100%;border-radius:2px;
+                background:linear-gradient(90deg,#00F0FF,#8B5CF6,#FF1053);
+                transition:width 0.4s cubic-bezier(0.16,1,0.3,1);"></div>
+        </div>
+        <style>
+            @keyframes xf-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+            @keyframes xf-glow{0%{opacity:0.6;transform:scale(0.9)}100%{opacity:1;transform:scale(1.1)}}
+        </style>
+    </div>
+    <script type="module" src="/src/runtime/bootstrap/webEntry.ts"></script>
+</body>
+</html>

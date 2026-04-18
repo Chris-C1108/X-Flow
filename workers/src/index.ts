@@ -24,10 +24,9 @@ const RATE_LIMIT    = 30;                  // 每 IP 每分钟请求上限
 const TOKEN_WINDOW  = 5 * 60 * 1000;      // Token 时间窗口 5 分钟
 
 const ALLOWED_ORIGINS = [
-    'https://twitter-ero-video-ranking.com',
-    'https://x-ero-anime.com',
     'https://truvaze.com',
-    // 开发阶段调试用（上线后移除）
+    'https://x-ero-anime.com',
+    'https://app.x-flow.ccwu.cc',
     'http://localhost',
 ];
 

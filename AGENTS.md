@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-X-Flow (`极境流媒体排行榜 v6 Pro`) 是一个 **Tampermonkey 用户脚本**，运行在 `twitter-ero-video-ranking.com` 和 `x-ero-anime.com` 上。它在 `document-start` 阶段接管页面，注入一个独立的 Sandbox 容器，提供 **TikTok 风格的全屏竖屏视频浏览体验**，替代原站 UI。
+X-Flow (`极境流媒体排行榜 v6 Pro`) 是一个 **Tampermonkey 用户脚本**，运行在 `truvaze.com` 和 `x-ero-anime.com` 上。它在 `document-start` 阶段接管页面，注入一个独立的 Sandbox 容器，提供 **TikTok 风格的全屏竖屏视频浏览体验**，替代原站 UI。
 
 **核心约束：** 这不是独立 Web App，而是寄生在宿主页面的 Userscript。所有网络请求受同源策略约束，DOM 操作必须考虑与 React Hydration 的共存防御。
 
@@ -38,7 +38,7 @@ X-Flow/
 ├── .agents/
 │   ├── knowledge/         # 经验教训文件（详见下方 Experience Index）
 │   ├── dev-docs/          # PRD 等产品文档
-│   └── todo/              # 待办 & 已完成任务（含 v6.0.0_plan.md）
+│   └── todo/              # 待办 & 已完成任务（含 v6/v7 设计与计划文档）
 └── src/
     ├── main.ts            # Entry point — 调用 Sandbox.initialize()
     ├── api/
@@ -89,7 +89,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 
 1. `npm run build` — **必须无错误通过**
 2. 在 Tampermonkey 中安装 `dist/` 输出的 `.user.js`
-3. 访问 `twitter-ero-video-ranking.com` → 验证播放器界面正常渲染
+3. 访问 `truvaze.com` → 验证播放器界面正常渲染
 4. 上下滑动验证视频切换流畅，无黑屏
 5. 点击频道切换 (Real ↔ Anime) → 验证无 CORS 错误、列表正常刷新
 6. 检查 DevTools Console 无 403 / NotSupportedError
@@ -100,9 +100,10 @@ npm run build            # 构建生产 .user.js 到 dist/
 
 ### 当前版本状态
 
-| 版本 | 计划文档 | 当前阶段 | 整体进度 |
-|------|----------|----------|----------|
-| **v6.0.0** | [v6.0.0_plan.md](.agents/todo/v6.0.0_plan.md) | M4 — 推荐系统 UI 闭环 | 🔄 进行中 |
+| 版本 | 设计/计划文档 | 当前阶段 | 整体进度 |
+|------|---------------|----------|----------|
+| **v7.0.0** | [v7.0_pages_functions_proxy_Desgin.md](.agents/todo/v7.0_pages_functions_proxy_Desgin.md) + [v7.0_pages_functions_proxy_plan.md](.agents/todo/v7.0_pages_functions_proxy_plan.md) | M5 — Cloudflare Pages 部署上线 | 🔄 进行中 |
+| v6.0.0 | [v6.0.0_plan.md](.agents/todo/v6.0.0_plan.md) | 收尾（推荐闭环延后） | ⏭️ 冻结 |
 
 ### 状态标记规范
 
@@ -144,9 +145,16 @@ npm run build            # 构建生产 .user.js 到 dist/
 ### 计划文档管理规则
 
 - 计划文档保存在 `.agents/todo/v{version}_plan.md`
-- 每个版本一个文档，禁止跨版本混写
+- 设计文档保存在 `.agents/todo/v{version}_*_Desgin.md`
+- 每个版本一个计划文档 + 一个设计文档，禁止跨版本混写
 - 版本发布后，将计划文档重命名为 `v{version}_plan_DONE.md` 归档
 - Backlog 中的需求在下一版本计划制定时评估是否纳入
+
+### v7 执行入口（MANDATORY）
+
+- 开发前必须先阅读：[`v7.0_pages_functions_proxy_Desgin.md`](.agents/todo/v7.0_pages_functions_proxy_Desgin.md)
+- 日常进度仅在：[`v7.0_pages_functions_proxy_plan.md`](.agents/todo/v7.0_pages_functions_proxy_plan.md) 维护
+- `plan.md` 是唯一任务状态来源，禁止在聊天中口头替代进度更新
 
 ---
 
@@ -158,33 +166,35 @@ npm run build            # 构建生产 .user.js 到 dist/
 > ⚠️ **知识诅咒警告：** 部分经验文件记录的是**已失败的方案**（标记为 ❌ FAILED）。
 > 遇到相同问题时，**不要重复使用失败方案**，应先阅读失败原因，然后寻找新思路。
 > 新 BUG 不一定适合旧经验——如果旧方案在多轮迭代中反复失败，它可能基于错误的假设。
+>
+> 🏷️ **标记说明：** `【TM-ONLY】` = 仅适用于 Tampermonkey/Userscript 运行时。进行 v7 Pages 独立站开发时，默认忽略 `【TM-ONLY】` 经验，除非任务明确涉及 userscript 兼容层。
 
 ### 🏗️ Architecture & Sandbox
 
 | ID | Trigger Keywords | Verdict | Knowledge File |
 |----|------------------|---------|----------------|
-| 01 | head, innerHTML, css, unstyled | NEVER wipe `document.head` in userscripts; preserve Monkey-injected styles | [sandbox_css_protection.md](.agents/knowledge/sandbox_css_protection.md) |
-| 04 | 403, referrer, twimg, video load, NotSupportedError | Use document-level `<meta referrer>` NOT element-level `referrerpolicy` for media | [video_referrer_403_fix.md](.agents/knowledge/video_referrer_403_fix.md) |
-| 06 | channel, switch, baseUrl, isAnimeOnly, anime, real, CORS | Channel switch = flip `isAnimeOnly` query param; NEVER change `baseUrl` to another domain | [channel_switch_api_design.md](.agents/knowledge/channel_switch_api_design.md) |
+| 01 | head, innerHTML, css, unstyled | 【TM-ONLY】 NEVER wipe `document.head` in userscripts; preserve Monkey-injected styles | [sandbox_css_protection.md](.agents/knowledge/sandbox_css_protection.md) |
+| 04 | 403, referrer, twimg, video load, NotSupportedError | 【TM-ONLY】 Use document-level `<meta referrer>` NOT element-level `referrerpolicy` for media | [video_referrer_403_fix.md](.agents/knowledge/video_referrer_403_fix.md) |
+| 06 | channel, switch, baseUrl, isAnimeOnly, anime, real, CORS | 【TM-ONLY】 Channel switch = flip `isAnimeOnly` query param; NEVER change `baseUrl` to another domain | [channel_switch_api_design.md](.agents/knowledge/channel_switch_api_design.md) |
 | 07 | media query, display: none, mobile button, order | CSS base styles MUST be defined BEFORE @media queries to avoid cascade overriding | [css_declaration_order_cascading.md](.agents/knowledge/css_declaration_order_cascading.md) |
-| 09 | blank screen, white, FOUC, error, finally | Always remove FOUC hide in `finally` block or error state; don't wait for API success | [api_error_fouc_protection.md](.agents/knowledge/api_error_fouc_protection.md) |
+| 09 | blank screen, white, FOUC, error, finally | 【TM-ONLY】 Always remove FOUC hide in `finally` block or error state; don't wait for API success | [api_error_fouc_protection.md](.agents/knowledge/api_error_fouc_protection.md) |
 | 10 | range, daily, all, 日榜, 总榜, same data | API `range=daily` is INVALID — daily = empty string `""`; use RANGE_MAP in ApiClient | [api_range_param_mapping.md](.agents/knowledge/api_range_param_mapping.md) |
-| 11 | hydration, React, error 418, replace, **white screen, blank, FOUC, display none, 白屏, 1500ms, 间歇性注入失败, 多次刷新** | ✅ SOLVED — 三层防御: Pre-emptive API 冻结 + document.open() + CSP + 选择性错误处理 | [react_hydration_coexistence.md](.agents/knowledge/react_hydration_coexistence.md) |
-| 12 | redirect, clickjacking, ad, window, **Tab-under, location.href, location.replace, onclick=, onmousedown=, postMessage null** | ✅ SOLVED — `document.open()` + CSP meta injection; 9 JS-level approaches failed, browser-level CSP succeeded | [global_clickjacking_defense.md](.agents/knowledge/global_clickjacking_defense.md) |
+| 11 | hydration, React, error 418, replace, **white screen, blank, FOUC, display none, 白屏, 1500ms, 间歇性注入失败, 多次刷新** | 【TM-ONLY】 ✅ SOLVED — 三层防御: Pre-emptive API 冻结 + document.open() + CSP + 选择性错误处理 | [react_hydration_coexistence.md](.agents/knowledge/react_hydration_coexistence.md) |
+| 12 | redirect, clickjacking, ad, window, **Tab-under, location.href, location.replace, onclick=, onmousedown=, postMessage null** | 【TM-ONLY】 ✅ SOLVED — `document.open()` + CSP meta injection; 9 JS-level approaches failed, browser-level CSP succeeded | [global_clickjacking_defense.md](.agents/knowledge/global_clickjacking_defense.md) |
 | 14 | carousel, loop, wrap, swipe back, 轮转, jump, 跳回, 反向 | Clone 6-slot track (clone-last \| r0\|r1\|r2\|r3 \| clone-first); `transitionend` instant-jump to real mirror | [infinite_carousel_clone_pattern.md](.agents/knowledge/infinite_carousel_clone_pattern.md) |
 | 15 | safari, long press, select, callout, text selection, bounce, overscroll, 长按选字, 弹出菜单 | `-webkit-user-select:none` + `-webkit-touch-callout:none` + `overscroll-behavior:none` + `touch-action:manipulation` | [safari_spa_behavior_suppression.md](.agents/knowledge/safari_spa_behavior_suppression.md) |
-| 18 | redirect, ad, 重定向, 广告, nuclear, 核平, window.stop, inline script, reload loop | ✅ **SOLVED** — `document.open()` + CSP meta in `<head>` blocks all 3rd-party scripts at browser level; no Content Blocker needed | [anti_ad_redirect_postmortem.md](.agents/knowledge/anti_ad_redirect_postmortem.md) |
-| 19 | CSP, Content-Security-Policy, meta, document.open, document.write, 第三方脚本, frame-src, script-src | ✅ The winning pattern: `document.open()` + CSP meta in clean document; GM API unaffected by CSP | [csp_meta_document_open_solution.md](.agents/knowledge/csp_meta_document_open_solution.md) |
-| 23 | appRoot, xflow-app-root, dataset null, document.write missing node, Cannot read properties of null | Self-heal `#xflow-app-root` inside Sandbox before touching `.dataset` or Layout init | [app_root_self_heal_after_document_write.md](.agents/knowledge/app_root_self_heal_after_document_write.md) |
+| 18 | redirect, ad, 重定向, 广告, nuclear, 核平, window.stop, inline script, reload loop | 【TM-ONLY】 ✅ **SOLVED** — `document.open()` + CSP meta in `<head>` blocks all 3rd-party scripts at browser level; no Content Blocker needed | [anti_ad_redirect_postmortem.md](.agents/knowledge/anti_ad_redirect_postmortem.md) |
+| 19 | CSP, Content-Security-Policy, meta, document.open, document.write, 第三方脚本, frame-src, script-src | 【TM-ONLY】 ✅ The winning pattern: `document.open()` + CSP meta in clean document; GM API unaffected by CSP | [csp_meta_document_open_solution.md](.agents/knowledge/csp_meta_document_open_solution.md) |
+| 23 | appRoot, xflow-app-root, dataset null, document.write missing node, Cannot read properties of null | 【TM-ONLY】 Self-heal `#xflow-app-root` inside Sandbox before touching `.dataset` or Layout init | [app_root_self_heal_after_document_write.md](.agents/knowledge/app_root_self_heal_after_document_write.md) |
 
 ### 🛠️ Build & Syntax
 
 | ID | Trigger Keywords | Verdict | Knowledge File |
 |----|------------------|---------|----------------|
 | 02 | backtick, syntax error, vite | Escape backticks carefully or use standard quotes for template segments | [template_literal_syntax_safety.md](.agents/knowledge/template_literal_syntax_safety.md) |
-| 13 | vite client, URL, null, safari | Configure `noframes` & proxy `window.URL` for strict baseURI null bypass in iOS | [safari_null_base_uri_crash.md](.agents/knowledge/safari_null_base_uri_crash.md) |
-| 16 | obfuscate, encrypt, build, minify, 混淆, 加密, rollup-plugin-obfuscator, GM_ broken after build | Use `global:true`; reserve GM_ names; disable `selfDefending` & `renameProperties` | [build_obfuscation_tampermonkey.md](.agents/knowledge/build_obfuscation_tampermonkey.md) |
-| 22 | document-start, splash missing, original site flash, static import, delayed takeover, 首屏闪原站, 晚接管 | Bootstrap entry must avoid runtime static imports; do `document.open()` before loading Sandbox graph | [document_start_static_import_delay.md](.agents/knowledge/document_start_static_import_delay.md) |
+| 13 | vite client, URL, null, safari | 【TM-ONLY】 Configure `noframes` & proxy `window.URL` for strict baseURI null bypass in iOS | [safari_null_base_uri_crash.md](.agents/knowledge/safari_null_base_uri_crash.md) |
+| 16 | obfuscate, encrypt, build, minify, 混淆, 加密, rollup-plugin-obfuscator, GM_ broken after build | 【TM-ONLY】 Use `global:true`; reserve GM_ names; disable `selfDefending` & `renameProperties` | [build_obfuscation_tampermonkey.md](.agents/knowledge/build_obfuscation_tampermonkey.md) |
+| 22 | document-start, splash missing, original site flash, static import, delayed takeover, 首屏闪原站, 晚接管 | 【TM-ONLY】 Bootstrap entry must avoid runtime static imports; do `document.open()` before loading Sandbox graph | [document_start_static_import_delay.md](.agents/knowledge/document_start_static_import_delay.md) |
 
 ### 📱 Player & Performance
 
@@ -194,7 +204,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 05 | preload, buffer, slow, twimg, black screen | Tiered preload: current=auto, next after 2s, prev after 4s; clear timers on navigate | [video_preload_strategy.md](.agents/knowledge/video_preload_strategy.md) |
 | 08 | progress, swipe, touch, collision, region | Partition screen: use bottom 15% for progress/seeking; ignore vertical swiping in that area | [player_gesture_partitioning.md](.agents/knowledge/player_gesture_partitioning.md) |
 | 17 | hover play, mobile, touch, preview video, 移动端悬浮, 长按播放, touchstart, preventDefault | Long-press 450ms delay + `touchmove` scroll-cancel + `touchend` `preventDefault` when previewing | [mobile_touch_hover_preview.md](.agents/knowledge/mobile_touch_hover_preview.md) |
-| 20 | like, bookmark, favorite, 收藏, 点赞, localStorage, GM_setValue, 跨域, 持久化 | Use `GM_setValue`/`GM_getValue` for likes & bookmarks — cross-domain persistence; never use localStorage for shared state | [like_bookmark_gm_persistence.md](.agents/knowledge/like_bookmark_gm_persistence.md) |
+| 20 | like, bookmark, favorite, 收藏, 点赞, localStorage, GM_setValue, 跨域, 持久化 | 【TM-ONLY】 Use `GM_setValue`/`GM_getValue` for likes & bookmarks — cross-domain persistence; never use localStorage for shared state | [like_bookmark_gm_persistence.md](.agents/knowledge/like_bookmark_gm_persistence.md) |
 | 21 | hero carousel, hidden video, preload, seek slow, audio only, frame freeze, buffer contention, 离屏视频, 进度跳转卡顿 | Only the visible hero card may hold `src`/play; unload hidden hero videos before player open | [hero_video_bandwidth_priority.md](.agents/knowledge/hero_video_bandwidth_priority.md) |
 | 24 | hc-card-overlay, leak, 漏光, seam, subpixel, 遮罩不全, 边缘透出, 底部透出 | Hero overlay needs `inset:-1px` overscan + `isolation:isolate` + paint containment to avoid subpixel seams | [hero_overlay_light_leak_fix.md](.agents/knowledge/hero_overlay_light_leak_fix.md) |
 | 25 | media-grid only 3 items, cache key, perPage, hero preload, 主列表只有3条, 缓存污染 | Cache key must include `category` + `perPage`; avoid Hero(3) polluting grid(50) cache | [cache_key_per_page_collision.md](.agents/knowledge/cache_key_per_page_collision.md) |
@@ -210,6 +220,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 
 - **Subject:** [场景描述]
 - **Env:** [框架/版本号]
+- **Runtime Scope:** [可选；如 `【TM-ONLY】`]
 - **Issue:** [错误现象或日志片段]
 - **Solution:** [核心解决方案]
 - **Action_Steps:**

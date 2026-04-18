@@ -1,6 +1,8 @@
 import { ApiClient, FetchParams } from './ApiClient';
 import { CacheManager, QueryState, CacheEntry } from './CacheManager';
 import { log } from '../utils/Logger';
+import { getRuntimeAdapter } from '../runtime';
+import type { RuntimeAdapter } from '../runtime/adapter';
 
 export interface LoadResult {
     fromCache: boolean;
@@ -23,17 +25,20 @@ export class PoolManager {
     private listeners: ((items: any[]) => void)[] = [];
     private activeRequestId: number = 0;
     private preloadInFlight = new Set<string>();
+    private readonly runtime: RuntimeAdapter;
 
     // Current active query state
     private currentQuery: QueryState = {
         isAnimeOnly: false,
         range: 'daily',
         sort: 'favorite',
+        perPage: 50,
     };
     private currentPage: number = 1;
 
-    constructor() {
-        this.api = new ApiClient();
+    constructor(runtime: RuntimeAdapter = getRuntimeAdapter()) {
+        this.runtime = runtime;
+        this.api = new ApiClient(runtime);
         this.cache = new CacheManager();
         // Sync initial channel from domain detection
         this.currentQuery.isAnimeOnly = this.api.getIsAnime();
@@ -117,7 +122,7 @@ export class PoolManager {
                 this.dataPool = [...this.dataPool, ...newItems];
                 this.currentPage += 1;
 
-                if (newItems.length < 50) {
+                if (newItems.length < (this.currentQuery.perPage || 50)) {
                     this.hasMore = false;
                 }
 
@@ -157,7 +162,7 @@ export class PoolManager {
 
         try {
             // Use a fresh ApiClient to avoid mutating current channel state
-            const tempApi = new ApiClient();
+            const tempApi = new ApiClient(this.runtime);
             tempApi.setChannel(query.isAnimeOnly);
 
             const data = await tempApi.fetchList({
@@ -172,7 +177,7 @@ export class PoolManager {
             this.cache.set(query, {
                 items,
                 nextPage: 2,
-                hasMore: items.length >= 50,
+                hasMore: items.length >= (query.perPage || 50),
                 updatedAt: Date.now(),
             });
             log(`PoolManager: Preload done for ${key} (${items.length} items)`);
