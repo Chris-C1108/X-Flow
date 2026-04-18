@@ -175,6 +175,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 15 | safari, long press, select, callout, text selection, bounce, overscroll, 长按选字, 弹出菜单 | `-webkit-user-select:none` + `-webkit-touch-callout:none` + `overscroll-behavior:none` + `touch-action:manipulation` | [safari_spa_behavior_suppression.md](.agents/knowledge/safari_spa_behavior_suppression.md) |
 | 18 | redirect, ad, 重定向, 广告, nuclear, 核平, window.stop, inline script, reload loop | ✅ **SOLVED** — `document.open()` + CSP meta in `<head>` blocks all 3rd-party scripts at browser level; no Content Blocker needed | [anti_ad_redirect_postmortem.md](.agents/knowledge/anti_ad_redirect_postmortem.md) |
 | 19 | CSP, Content-Security-Policy, meta, document.open, document.write, 第三方脚本, frame-src, script-src | ✅ The winning pattern: `document.open()` + CSP meta in clean document; GM API unaffected by CSP | [csp_meta_document_open_solution.md](.agents/knowledge/csp_meta_document_open_solution.md) |
+| 23 | appRoot, xflow-app-root, dataset null, document.write missing node, Cannot read properties of null | Self-heal `#xflow-app-root` inside Sandbox before touching `.dataset` or Layout init | [app_root_self_heal_after_document_write.md](.agents/knowledge/app_root_self_heal_after_document_write.md) |
 
 ### 🛠️ Build & Syntax
 
@@ -183,6 +184,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 02 | backtick, syntax error, vite | Escape backticks carefully or use standard quotes for template segments | [template_literal_syntax_safety.md](.agents/knowledge/template_literal_syntax_safety.md) |
 | 13 | vite client, URL, null, safari | Configure `noframes` & proxy `window.URL` for strict baseURI null bypass in iOS | [safari_null_base_uri_crash.md](.agents/knowledge/safari_null_base_uri_crash.md) |
 | 16 | obfuscate, encrypt, build, minify, 混淆, 加密, rollup-plugin-obfuscator, GM_ broken after build | Use `global:true`; reserve GM_ names; disable `selfDefending` & `renameProperties` | [build_obfuscation_tampermonkey.md](.agents/knowledge/build_obfuscation_tampermonkey.md) |
+| 22 | document-start, splash missing, original site flash, static import, delayed takeover, 首屏闪原站, 晚接管 | Bootstrap entry must avoid runtime static imports; do `document.open()` before loading Sandbox graph | [document_start_static_import_delay.md](.agents/knowledge/document_start_static_import_delay.md) |
 
 ### 📱 Player & Performance
 
@@ -194,6 +196,8 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 17 | hover play, mobile, touch, preview video, 移动端悬浮, 长按播放, touchstart, preventDefault | Long-press 450ms delay + `touchmove` scroll-cancel + `touchend` `preventDefault` when previewing | [mobile_touch_hover_preview.md](.agents/knowledge/mobile_touch_hover_preview.md) |
 | 20 | like, bookmark, favorite, 收藏, 点赞, localStorage, GM_setValue, 跨域, 持久化 | Use `GM_setValue`/`GM_getValue` for likes & bookmarks — cross-domain persistence; never use localStorage for shared state | [like_bookmark_gm_persistence.md](.agents/knowledge/like_bookmark_gm_persistence.md) |
 | 21 | hero carousel, hidden video, preload, seek slow, audio only, frame freeze, buffer contention, 离屏视频, 进度跳转卡顿 | Only the visible hero card may hold `src`/play; unload hidden hero videos before player open | [hero_video_bandwidth_priority.md](.agents/knowledge/hero_video_bandwidth_priority.md) |
+| 24 | hc-card-overlay, leak, 漏光, seam, subpixel, 遮罩不全, 边缘透出, 底部透出 | Hero overlay needs `inset:-1px` overscan + `isolation:isolate` + paint containment to avoid subpixel seams | [hero_overlay_light_leak_fix.md](.agents/knowledge/hero_overlay_light_leak_fix.md) |
+| 25 | media-grid only 3 items, cache key, perPage, hero preload, 主列表只有3条, 缓存污染 | Cache key must include `category` + `perPage`; avoid Hero(3) polluting grid(50) cache | [cache_key_per_page_collision.md](.agents/knowledge/cache_key_per_page_collision.md) |
 
 ---
 

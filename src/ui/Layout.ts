@@ -149,6 +149,16 @@ export class Layout {
     // ─── Event binding ──────────────────────────────────────────────
 
     private bindEvents() {
+        const appLayout = this.rootElement?.querySelector('.app-layout') as HTMLElement | null;
+        const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
+        sidebarToggleBtn?.addEventListener('click', () => {
+            if (!appLayout) return;
+            const collapsed = appLayout.classList.toggle('sidebar-collapsed');
+            sidebarToggleBtn.setAttribute('aria-expanded', (!collapsed).toString());
+            sidebarToggleBtn.setAttribute('aria-label', collapsed ? '展开侧边栏' : '收起侧边栏');
+            sidebarToggleBtn.setAttribute('title', collapsed ? '展开侧边栏' : '收起侧边栏');
+        });
+
         // Desktop sidebar range buttons
         document.querySelectorAll('.nav-item[data-range]').forEach(item => {
             item.addEventListener('click', async () => {
@@ -547,7 +557,7 @@ export class Layout {
         const isAnime = this.pool.getApiClient().getIsAnime();
 
         const fetches = Layout.HERO_RANGES.map(async (r) => {
-            const query = { isAnimeOnly: isAnime, range: r.id, sort: 'favorite' };
+            const query = { isAnimeOnly: isAnime, range: r.id, sort: 'favorite', perPage: 3 };
 
             // 1. 先查缓存（可能已被 preload 或其他路径填充）
             const cached = this.pool.getCachedItems(query);
@@ -557,7 +567,7 @@ export class Layout {
 
             // 2. 缓存未命中 → 通过 preload 获取并写入缓存
             try {
-                await this.pool.preload({ ...query, perPage: 3 });
+                await this.pool.preload(query);
                 const fresh = this.pool.getCachedItems(query);
                 return { id: r.id, items: fresh.slice(0, 3) };
             } catch {

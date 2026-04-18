@@ -13,6 +13,7 @@ export interface FetchParams {
 export class ApiClient {
     private baseUrl: string;
     private isAnime: number;
+    private static readonly REQUEST_TIMEOUT = 8000;
 
     constructor() {
         // 使用 main.ts Phase 0a 冻结的 origin，防止核平后 location 变为 null
@@ -58,6 +59,7 @@ export class ApiClient {
                 url: url.toString(),
                 headers: { 'Accept': 'application/json' },
                 responseType: 'json',
+                timeout: ApiClient.REQUEST_TIMEOUT,
                 onload: (res) => {
                     if (res.status >= 200 && res.status < 300) {
                         resolve(res.response);
@@ -66,6 +68,7 @@ export class ApiClient {
                     }
                 },
                 onerror: (err) => reject(new Error(`GM_xmlhttpRequest failed: ${err.error || 'Network error'}`)),
+                ontimeout: () => reject(new Error(`API timeout after ${ApiClient.REQUEST_TIMEOUT}ms`)),
             });
         });
     }

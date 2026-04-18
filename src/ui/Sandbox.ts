@@ -33,64 +33,97 @@ export class Sandbox {
     public async initialize() {
         if (this.appRoot) return;
 
-        // iOS Safari: document.baseURI null → Vite URL 构造崩溃
         try {
-            const OriginalURL = window.URL;
-            window.URL = new Proxy(OriginalURL, {
-                // @ts-ignore
-                construct(target, args) {
-                    if (args.length > 1 && (args[1] === null || args[1] === undefined)) {
-                        return new target(args[0]);
-                    }
+            // iOS Safari: document.baseURI null → Vite URL 构造崩溃
+            try {
+                const OriginalURL = window.URL;
+                window.URL = new Proxy(OriginalURL, {
                     // @ts-ignore
-                    return new target(...args);
-                }
-            });
-        } catch (_) {}
+                    construct(target, args) {
+                        if (args.length > 1 && (args[1] === null || args[1] === undefined)) {
+                            return new target(args[0]);
+                        }
+                        // @ts-ignore
+                        return new target(...args);
+                    }
+                });
+            } catch (_) {}
 
-        // 注入应用 CSS
-        const style = document.createElement('style');
-        style.setAttribute('data-xflow-app', '1');
-        style.textContent = appCssText;
-        document.head.appendChild(style);
+            // 注入应用 CSS
+            const style = document.createElement('style');
+            style.setAttribute('data-xflow-app', '1');
+            style.textContent = appCssText;
+            document.head.appendChild(style);
 
-        // 注入字体
-        const fontFrag = document.createDocumentFragment();
-        const preconnect1 = document.createElement('link');
-        preconnect1.rel = 'preconnect';
-        preconnect1.href = 'https://fonts.googleapis.com';
-        fontFrag.appendChild(preconnect1);
+            // 注入字体
+            const fontFrag = document.createDocumentFragment();
+            const preconnect1 = document.createElement('link');
+            preconnect1.rel = 'preconnect';
+            preconnect1.href = 'https://fonts.googleapis.com';
+            fontFrag.appendChild(preconnect1);
 
-        const preconnect2 = document.createElement('link');
-        preconnect2.rel = 'preconnect';
-        preconnect2.href = 'https://fonts.gstatic.com';
-        preconnect2.crossOrigin = '';
-        fontFrag.appendChild(preconnect2);
+            const preconnect2 = document.createElement('link');
+            preconnect2.rel = 'preconnect';
+            preconnect2.href = 'https://fonts.gstatic.com';
+            preconnect2.crossOrigin = '';
+            fontFrag.appendChild(preconnect2);
 
-        const fontLink = document.createElement('link');
-        fontLink.rel = 'stylesheet';
-        fontLink.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Syne:wght@500;700;800&display=swap';
-        fontFrag.appendChild(fontLink);
+            const fontLink = document.createElement('link');
+            fontLink.rel = 'stylesheet';
+            fontLink.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Syne:wght@500;700;800&display=swap';
+            fontFrag.appendChild(fontLink);
 
-        document.head.appendChild(fontFrag);
+            document.head.appendChild(fontFrag);
 
-        // ── Splash 进度推进 ──────────────────────────────────────
-        this.splashProgress(30);
+            // ── Splash 进度推进 ──────────────────────────────────────
+            this.splashProgress(30);
 
-        // ── 并行：后台网络检测 + Layout 初始化 ───────────────────
-        // 网络检测完全不阻塞主流程，结果出来后在主界面插 banner
-        this.checkNetworkInBackground();
+            // ── 并行：后台网络检测 + Layout 初始化 ───────────────────
+            // 网络检测完全不阻塞主流程，结果出来后在主界面插 banner
+            void this.checkNetworkInBackground();
 
-        // 启动业务
-        this.splashProgress(60);
-        this.appRoot = document.getElementById('xflow-app-root')!;
-        log('Sandbox: document.open() clean slate ready');
-        const layout = new Layout();
-        layout.init(this.appRoot);
+            // 启动业务
+            this.splashProgress(60);
+            this.appRoot = this.ensureAppRoot();
+            this.appRoot.dataset.xflowState = 'booting';
+            log('Sandbox: document.open() clean slate ready');
+            const layout = new Layout();
+            layout.init(this.appRoot);
 
-        // Layout 渲染完成 → 隐藏 splash
-        this.splashProgress(100);
-        await this.hideSplash();
+            // Layout 渲染完成
+            this.splashProgress(100);
+            this.appRoot.dataset.xflowState = 'ready';
+        } catch (e) {
+            // 捕获任意初始化异常；不要 rethrow（防止 finally 中 hideSplash 被跳过）
+            console.error('X-Flow Sandbox init error:', e);
+            this.appRoot = this.appRoot || document.getElementById('xflow-app-root');
+            if (this.appRoot) this.appRoot.dataset.xflowState = 'failed';
+        } finally {
+            // ✅ 无论成功或失败，Splash 必须移除
+            // 否则 z-index:2147483647 的遮罩会永久盖住整个页面（表现为黑屏）
+            await this.hideSplash();
+        }
+    }
+
+    private ensureAppRoot() {
+        const existingRoot = document.getElementById('xflow-app-root');
+        if (existingRoot instanceof HTMLElement) {
+            return existingRoot;
+        }
+
+        log('Sandbox: appRoot missing after document.write() — rebuilding shell');
+
+        const body = document.body || document.createElement('body');
+        if (!document.body) {
+            body.style.cssText = 'margin:0;overflow:hidden;width:100dvw;height:100dvh;background:#0D0D12';
+            document.documentElement.appendChild(body);
+        }
+
+        const rebuiltRoot = document.createElement('div');
+        rebuiltRoot.id = 'xflow-app-root';
+        rebuiltRoot.style.cssText = 'width:100%;height:100%;background:var(--bg-base,#0D0D12);color:var(--text-100,#fff);overflow:hidden;position:relative';
+        body.prepend(rebuiltRoot);
+        return rebuiltRoot;
     }
 
     // ─── Splash Screen ──────────────────────────────────────────
@@ -127,50 +160,54 @@ export class Sandbox {
      * 失败时在主界面顶部插入警告 Banner。
      */
     private async checkNetworkInBackground() {
-        const TIMEOUT = Sandbox.PROBE_TIMEOUT;
+        try {
+            const TIMEOUT = Sandbox.PROBE_TIMEOUT;
 
-        const probeImage = (): Promise<boolean> => {
-            return new Promise((resolve) => {
-                const img = new Image();
-                const timer = setTimeout(() => resolve(false), TIMEOUT);
-                img.onload = () => { clearTimeout(timer); resolve(true); };
-                img.onerror = () => {
-                    clearTimeout(timer);
-                    // CORS onerror ≠ 网络不可达，视为可达
-                    resolve(true);
-                };
-                img.src = 'https://pbs.twimg.com/profile_images/1/normal.jpg?' + Date.now();
-            });
-        };
+            const probeImage = (): Promise<boolean> => {
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    const timer = setTimeout(() => resolve(false), TIMEOUT);
+                    img.onload = () => { clearTimeout(timer); resolve(true); };
+                    img.onerror = () => {
+                        clearTimeout(timer);
+                        // CORS onerror ≠ 网络不可达，视为可达
+                        resolve(true);
+                    };
+                    img.src = 'https://pbs.twimg.com/profile_images/1/normal.jpg?' + Date.now();
+                });
+            };
 
-        const probeVideo = (): Promise<boolean> => {
-            return new Promise((resolve) => {
-                const timer = setTimeout(() => resolve(false), TIMEOUT);
-                try {
-                    GM_xmlhttpRequest({
-                        method: 'HEAD',
-                        url: 'https://video.twimg.com/ext_tw_video/1/pu/vid/avc1/270x480/probe.mp4?' + Date.now(),
-                        timeout: TIMEOUT,
-                        onload: () => { clearTimeout(timer); resolve(true); },
-                        onerror: () => { clearTimeout(timer); resolve(false); },
-                        ontimeout: () => { clearTimeout(timer); resolve(false); },
-                    });
-                } catch {
-                    clearTimeout(timer);
-                    resolve(false);
-                }
-            });
-        };
+            const probeVideo = (): Promise<boolean> => {
+                return new Promise((resolve) => {
+                    const timer = setTimeout(() => resolve(false), TIMEOUT);
+                    try {
+                        GM_xmlhttpRequest({
+                            method: 'HEAD',
+                            url: 'https://video.twimg.com/ext_tw_video/1/pu/vid/avc1/270x480/probe.mp4?' + Date.now(),
+                            timeout: TIMEOUT,
+                            onload: () => { clearTimeout(timer); resolve(true); },
+                            onerror: () => { clearTimeout(timer); resolve(false); },
+                            ontimeout: () => { clearTimeout(timer); resolve(false); },
+                        });
+                    } catch {
+                        clearTimeout(timer);
+                        resolve(false);
+                    }
+                });
+            };
 
-        const [imgOk, videoOk] = await Promise.all([probeImage(), probeVideo()]);
+            const [imgOk, videoOk] = await Promise.all([probeImage(), probeVideo()]);
 
-        if (imgOk && videoOk) {
-            log('Network check: OK');
-            return;
+            if (imgOk && videoOk) {
+                log('Network check: OK');
+                return;
+            }
+
+            log(`Network check failed: image=${imgOk}, video=${videoOk}`);
+            this.showNetworkBanner();
+        } catch (error) {
+            console.error('X-Flow network check error:', error);
         }
-
-        log(`Network check failed: image=${imgOk}, video=${videoOk}`);
-        this.showNetworkBanner();
     }
 
     /**

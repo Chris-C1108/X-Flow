@@ -16,8 +16,22 @@ import { Sandbox } from './ui/Sandbox';
  */
 
 // ── 防重入守卫（document.open 后浏览器可能重新注入脚本）──────────
-if ((window as any).__XFLOW_INIT__) throw new Error('X-Flow: already initialized');
-(window as any).__XFLOW_INIT__ = true;
+const _clearEarlyBootArtifacts = () => {
+    document.getElementById('xflow-preboot-banner-style')?.remove();
+    document.getElementById('xflow-preboot-veil-style')?.remove();
+};
+
+const _appRoot = document.getElementById('xflow-app-root');
+const _appHealthy = !!_appRoot?.querySelector('.app-layout') && _appRoot?.dataset.xflowState === 'ready';
+const _hasInitFlag = !!(window as any).__XFLOW_INIT__;
+
+if (_hasInitFlag && _appHealthy) {
+    // 已经是可用实例：仅清理早期 loading 覆盖层，避免误卡住
+    _clearEarlyBootArtifacts();
+    console.info('X-Flow: duplicate bootstrap detected, app already healthy');
+} else {
+    // 重复注入但实例不健康时，允许强制重启（而不是直接跳过导致永久 loading）
+    (window as any).__XFLOW_INIT__ = true;
 
 // ── iframe 守卫 ─────────────────────────────────────────────
 if (window.self !== window.top) throw new Error('X-Flow: abort in iframe');
@@ -211,21 +225,52 @@ new MutationObserver((mutations) => {
 
 // ── 启动应用 ──────────────────────────────────────────────────
 console.log('X-Flow v6 Pro: 3-layer defense active — clean slate');
+
+const _removeSplash = () => {
+    document.getElementById('xflow-splash')?.remove();
+};
+
+let _xflowInitStartedAt = Date.now();
+
+const _bootSandbox = (instance: Sandbox) => {
+    _xflowInitStartedAt = Date.now();
+
+    void instance.initialize()
+        .then(() => {
+            window.dispatchEvent(new Event('xflow:booted'));
+            _clearEarlyBootArtifacts();
+        })
+        .catch((error) => {
+            console.error('X-Flow: fatal init error', error);
+            const appRoot = document.getElementById('xflow-app-root');
+            if (appRoot) appRoot.dataset.xflowState = 'failed';
+            _removeSplash();
+            _clearEarlyBootArtifacts();
+        });
+};
+
 const sandbox = Sandbox.getInstance();
-sandbox.initialize();
+_bootSandbox(sandbox);
 
 // ── Layer 4: Fallback re-injection ──────────────────────────
 // document.open/write/close 可能在某些浏览器场景下失败（back-forward cache、
 // prerender、late parser re-assertion）。定时验证 appRoot 是否仍存在，
 // 如果原始站点内容接管了 DOM，则重新清洗并注入。
 const _verifyAndRecover = () => {
-    // ⚠️ Splash 仍在 = initialize() 仍在异步执行中（网络检测/数据加载），不干预
-    if (document.getElementById('xflow-splash')) return;
+    const splash = document.getElementById('xflow-splash');
+    if (splash) {
+        const splashAge = Date.now() - _xflowInitStartedAt;
+        if (splashAge < 4000) return;
+
+        console.warn('X-Flow: splash stuck beyond boot window — force removing');
+        splash.remove();
+    }
 
     const appRoot = document.getElementById('xflow-app-root');
-    if (appRoot && appRoot.children.length > 0) return; // 正常运行
+    const shellReady = !!appRoot?.querySelector('.app-layout') && !!appRoot?.querySelector('#main-scroll');
+    if (shellReady && appRoot?.dataset.xflowState === 'ready') return;
 
-    console.warn('X-Flow: appRoot missing or empty — re-injecting!');
+    console.warn(`X-Flow: app shell unhealthy (state=${appRoot?.dataset.xflowState ?? 'missing'}) — re-injecting!`);
 
     // 强制清洗 body
     document.body.innerHTML = '';
@@ -235,6 +280,7 @@ const _verifyAndRecover = () => {
     const newRoot = document.createElement('div');
     newRoot.id = 'xflow-app-root';
     newRoot.style.cssText = 'width:100%;height:100%;background:var(--bg-base,#0D0D12);color:var(--text-100,#fff);overflow:hidden;position:relative';
+    newRoot.dataset.xflowState = 'recovering';
     document.body.appendChild(newRoot);
 
     // 重新注入 meta referrer
@@ -264,10 +310,10 @@ const _verifyAndRecover = () => {
     // 重新初始化 Sandbox（单例会跳过，需要重置）
     (Sandbox as any)._instance = null;
     const freshSandbox = Sandbox.getInstance();
-    freshSandbox.initialize();
+    _bootSandbox(freshSandbox);
 };
 
-// 延迟验证：3s 和 6s（给 async initialize 足够时间完成网络检测 + 数据加载）
+// 延迟验证：3s 和 6s（覆盖启动失败与 splash 卡死的窗口）
 setTimeout(_verifyAndRecover, 3000);
 setTimeout(_verifyAndRecover, 6000);
 
@@ -276,3 +322,4 @@ setTimeout(_verifyAndRecover, 6000);
 setTimeout(() => {
     window.onerror = null;
 }, 10000);
+}

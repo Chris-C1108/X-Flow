@@ -3,8 +3,34 @@ import monkey from 'vite-plugin-monkey';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import obfuscator from 'rollup-plugin-obfuscator';
 
+const earlyBootstrapBanner = `;(() => {
+  try {
+    if (window.self !== window.top) return;
+    if (window.__XFLOW_PREBOOT__) return;
+    window.__XFLOW_PREBOOT__ = true;
+    const root = document.documentElement;
+    if (!root) return;
+    root.style.background = '#0D0D12';
+    root.style.overflow = 'hidden';
+    const style = document.createElement('style');
+    style.id = 'xflow-preboot-banner-style';
+    style.textContent = 'html{background:#0D0D12!important;overflow:hidden!important;}html::before{content:"";position:fixed;inset:0;z-index:2147483646;background:linear-gradient(160deg,#0D0D12 0%,#131320 40%,#0D0D12 100%);pointer-events:none;}html::after{content:"X-FLOW LOADING";position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2147483647;color:rgba(255,255,255,.86);font:700 14px/1.2 -apple-system,BlinkMacSystemFont,sans-serif;letter-spacing:.36em;pointer-events:none;text-shadow:0 0 24px rgba(130,80,255,.35);}';
+    (document.head || root).appendChild(style);
+    const cleanup = () => document.getElementById('xflow-preboot-banner-style')?.remove();
+    window.addEventListener('xflow:booted', cleanup, { once: true });
+    setTimeout(cleanup, 7000);
+  } catch (_) {}
+})();`;
+
 export default defineConfig(({ command }) => ({
-  build: { sourcemap: false },
+  build: {
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        banner: earlyBootstrapBanner,
+      },
+    },
+  },
   plugins: [
     basicSsl(),
     monkey({

@@ -25,6 +25,8 @@ export class CacheManager {
             q.isAnimeOnly ? 1 : 0,
             q.range || 'daily',
             q.sort || 'favorite',
+            q.category || '',
+            q.perPage ?? 50,
         ].join('|');
     }
 

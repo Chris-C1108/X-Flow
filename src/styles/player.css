@@ -45,9 +45,25 @@
         .retry-btn:active { transform: scale(0.98); }
 
         .app-layout { display: flex; height: 100dvh; width: 100dvw; position: fixed; inset: 0; }
-        .sidebar { width: 280px; flex-shrink: 0; background: var(--bg-surface); border-right: 1px solid rgba(255,255,255,0.03); display: flex; flex-direction: column; padding: 4vh 2vw; z-index: 100; }
-        .brand { font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 2.5rem; color: var(--text-100); display: flex; align-items: center; gap: 8px; }
+        .sidebar { width: 280px; flex-shrink: 0; background: var(--bg-surface); border-right: 1px solid rgba(255,255,255,0.03); display: flex; flex-direction: column; padding: 4vh 2vw; z-index: 100; transition: width 0.28s var(--ease-smooth), padding 0.28s var(--ease-smooth); }
+        .sidebar-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2.5rem; gap: 12px; }
+        .sidebar-toggle-btn { width: 34px; height: 34px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); color: var(--text-200); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.25s var(--ease-smooth); }
+        .sidebar-toggle-btn:hover { background: rgba(255,255,255,0.06); color: var(--text-100); border-color: rgba(255,255,255,0.14); }
+        .sidebar-toggle-btn:active { transform: scale(0.96); }
+        .sidebar-toggle-btn svg { transition: transform 0.28s var(--ease-smooth); }
+
+        .brand { font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; color: var(--text-100); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
         .brand::after { content: ''; display: block; width: 6px; height: 6px; background: var(--theme-accent); border-radius: 50%; transition: background 0.5s ease; }
+
+        .app-layout.sidebar-collapsed .sidebar { width: 88px; padding: 3vh 10px; }
+        .app-layout.sidebar-collapsed .sidebar-toggle-btn svg { transform: rotate(180deg); }
+        .app-layout.sidebar-collapsed .brand { justify-content: center; width: 100%; gap: 0; }
+        .app-layout.sidebar-collapsed .brand-text,
+        .app-layout.sidebar-collapsed .brand::after,
+        .app-layout.sidebar-collapsed .nav-title,
+        .app-layout.sidebar-collapsed .nav-item-label { display: none; }
+        .app-layout.sidebar-collapsed .nav-item { justify-content: center; padding: 1rem 0.4rem; }
+        .app-layout.sidebar-collapsed .nav-item.active::before { display: none; }
 
         .nav-group { margin-bottom: 2.5rem; border: none; }
         .nav-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 2px; color: var(--text-400); margin-bottom: 1rem; font-weight: 600; padding-left: 0.5rem; }
