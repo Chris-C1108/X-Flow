@@ -12,7 +12,7 @@ import { getRuntimeAdapter } from '../runtime';
 import type { RuntimeAdapter } from '../runtime/adapter';
 
 // ── 配置 ──────────────────────────────────────────────────────────
-const WORKER_URL_PRIMARY = 'https://x-flow.ccwu.cc';
+const WORKER_URL_PRIMARY = 'https://telemetry.x-flow.ccwu.cc';
 const WORKER_URL_FALLBACK = 'https://xflow-telemetry.chen-m1108.workers.dev';
 
 // Token 盐值（与 Worker 端保持一致）

@@ -16,8 +16,15 @@ function errorBody(code: number, message: string): string {
     return JSON.stringify({ ok: false, code, message });
 }
 
-export const onRequestGet: PagesFunction<ProxyEnv> = async (context) => {
+export const onRequest: PagesFunction<ProxyEnv> = async (context) => {
     const { request, env } = context;
+
+    if (request.method !== 'GET') {
+        return new Response(errorBody(405, 'Method not allowed'), {
+            status: 405,
+            headers: { ...SAFE_HEADERS, Allow: 'GET' },
+        });
+    }
 
     if (!env.RECOMMEND_ORIGIN) {
         return new Response(
@@ -66,14 +73,4 @@ export const onRequestGet: PagesFunction<ProxyEnv> = async (context) => {
             { status: 200, headers: SAFE_HEADERS },
         );
     }
-};
-
-export const onRequest: PagesFunction<ProxyEnv> = async (context) => {
-    if (context.request.method !== 'GET') {
-        return new Response(errorBody(405, 'Method not allowed'), {
-            status: 405,
-            headers: { ...SAFE_HEADERS, Allow: 'GET' },
-        });
-    }
-    return onRequestGet(context);
 };

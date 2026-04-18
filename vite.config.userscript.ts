@@ -51,8 +51,8 @@ export default defineConfig(({ command }) => ({
           'video.twimg.com',
           'pbs.twimg.com',
           'truvaze.com',
+          'telemetry.x-flow.ccwu.cc',
           'x-flow.ccwu.cc',
-          'app.x-flow.ccwu.cc',
           'xflow-telemetry.chen-m1108.workers.dev',
           '*'
         ],

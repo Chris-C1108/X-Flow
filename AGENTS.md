@@ -102,7 +102,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 
 | 版本 | 设计/计划文档 | 当前阶段 | 整体进度 |
 |------|---------------|----------|----------|
-| **v7.0.0** | [v7.0_pages_functions_proxy_Desgin.md](.agents/todo/v7.0_pages_functions_proxy_Desgin.md) + [v7.0_pages_functions_proxy_plan.md](.agents/todo/v7.0_pages_functions_proxy_plan.md) | M5 — Cloudflare Pages 部署上线 | 🔄 进行中 |
+| **v7.0.0** | [v7.0_pages_functions_proxy_Desgin.md](.agents/todo/v7.0_pages_functions_proxy_Desgin.md) + [v7.0_pages_functions_proxy_plan.md](.agents/todo/v7.0_pages_functions_proxy_plan.md) | M6 — 回归验证与发布收尾 | 🔄 进行中 |
 | v6.0.0 | [v6.0.0_plan.md](.agents/todo/v6.0.0_plan.md) | 收尾（推荐闭环延后） | ⏭️ 冻结 |
 
 ### 状态标记规范
@@ -208,6 +208,12 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 21 | hero carousel, hidden video, preload, seek slow, audio only, frame freeze, buffer contention, 离屏视频, 进度跳转卡顿 | Only the visible hero card may hold `src`/play; unload hidden hero videos before player open | [hero_video_bandwidth_priority.md](.agents/knowledge/hero_video_bandwidth_priority.md) |
 | 24 | hc-card-overlay, leak, 漏光, seam, subpixel, 遮罩不全, 边缘透出, 底部透出 | Hero overlay needs `inset:-1px` overscan + `isolation:isolate` + paint containment to avoid subpixel seams | [hero_overlay_light_leak_fix.md](.agents/knowledge/hero_overlay_light_leak_fix.md) |
 | 25 | media-grid only 3 items, cache key, perPage, hero preload, 主列表只有3条, 缓存污染 | Cache key must include `category` + `perPage`; avoid Hero(3) polluting grid(50) cache | [cache_key_per_page_collision.md](.agents/knowledge/cache_key_per_page_collision.md) |
+
+### 🚀 Deployment & Pages
+
+| ID | Trigger Keywords | Verdict | Knowledge File |
+|----|------------------|---------|----------------|
+| 26 | pages deploy, secret, env undefined, UPSTREAM_ORIGIN not configured, production, preview, 环境变量不生效 | Pages Functions secrets 仅在 Production 环境可用；部署必须 `--branch main` | [pages_functions_production_deploy.md](.agents/knowledge/pages_functions_production_deploy.md) |
 
 ---
 

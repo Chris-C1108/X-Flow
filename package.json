@@ -1,7 +1,7 @@
 {
   "name": "x-flow",
   "private": true,
-  "version": "5.2.4",
+  "version": "5.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.userscript.ts --host",

@@ -5,7 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 
 # ── 自定义域名配置 ───────────────────────────────────────────────
 routes = [
-  { pattern = "x-flow.ccwu.cc", custom_domain = true }
+  { pattern = "telemetry.x-flow.ccwu.cc", custom_domain = true }
 ]
 
 # ── D1 数据库绑定 ──────────────────────────────────────────────

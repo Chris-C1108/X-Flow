@@ -42,8 +42,15 @@ function buildUpstreamUrl(request: Request, env: ProxyEnv): URL {
     return upstream;
 }
 
-export const onRequestGet: PagesFunction<ProxyEnv> = async (context) => {
+export const onRequest: PagesFunction<ProxyEnv> = async (context) => {
     const { request, env } = context;
+
+    if (request.method !== 'GET') {
+        return new Response(errorBody(405, 'Method not allowed'), {
+            status: 405,
+            headers: { ...SAFE_HEADERS, Allow: 'GET' },
+        });
+    }
 
     if (!env.UPSTREAM_ORIGIN) {
         return new Response(errorBody(500, 'UPSTREAM_ORIGIN not configured'), {
@@ -85,14 +92,4 @@ export const onRequestGet: PagesFunction<ProxyEnv> = async (context) => {
             headers: SAFE_HEADERS,
         });
     }
-};
-
-export const onRequest: PagesFunction<ProxyEnv> = async (context) => {
-    if (context.request.method !== 'GET') {
-        return new Response(errorBody(405, 'Method not allowed'), {
-            status: 405,
-            headers: { ...SAFE_HEADERS, Allow: 'GET' },
-        });
-    }
-    return onRequestGet(context);
 };
