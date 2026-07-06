@@ -5,7 +5,7 @@
 // @author       Chris_C
 // @description  TikTok风格上下滑动切换，PC/移动端双端适配，缩略图先行加载、进度指示、点赞、只看未读、循环播放、长按倍速、广告/弹窗/重定向屏蔽
 // @license      Apache-2.0
-// @match        *://x-ero-anime.com/*
+// @match        *://twihub.net/*
 // @match        *://truvaze.com/*
 // @connect      x-ero-anime.com
 // @connect      video.twimg.com
