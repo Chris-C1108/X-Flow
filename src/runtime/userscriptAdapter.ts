@@ -3,7 +3,7 @@ import type { HttpRequestOptions, HttpResponse, RuntimeAdapter } from './adapter
 const getOrigin = () => {
     const frozen = (window as any).__XFLOW_ORIGIN__;
     if (typeof frozen === 'string' && frozen) return frozen;
-    return window.location.origin || 'https://truvaze.com';
+    return window.location.origin || 'https://twihub.net';
 };
 
 const parseStorageValue = <T>(raw: unknown, fallback: T): T => {
@@ -38,6 +38,7 @@ export const userscriptAdapter: RuntimeAdapter = {
                                 status: res.status,
                                 data: (options.responseType === 'json' ? res.response : res.responseText) as T,
                                 text: res.responseText || '',
+                                finalUrl: (res as any).finalUrl,
                             });
                         },
                         onerror: (err) => reject(new Error(`GM_xmlhttpRequest failed: ${err.error || 'Network error'}`)),

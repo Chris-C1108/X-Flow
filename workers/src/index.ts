@@ -198,9 +198,16 @@ async function handleRecommend(req: Request, env: Env): Promise<Response> {
         });
     }
 
-    const row = await env.DB.prepare(
+    let row = await env.DB.prepare(
         'SELECT rec_video_ids, highlight_map FROM recommendations WHERE anon_id = ?'
     ).bind(anonId).first<{ rec_video_ids: string; highlight_map: string }>();
+
+    // 如果用户不存在推荐数据，或者推荐列表为空，则回退到全局推荐 (GLOBAL_DEFAULT)
+    if (!row || !row.rec_video_ids || JSON.parse(row.rec_video_ids).length === 0) {
+        row = await env.DB.prepare(
+            'SELECT rec_video_ids, highlight_map FROM recommendations WHERE anon_id = ?'
+        ).bind('GLOBAL_DEFAULT').first<{ rec_video_ids: string; highlight_map: string }>();
+    }
 
     const result = {
         rec: row?.rec_video_ids ? JSON.parse(row.rec_video_ids) : [],

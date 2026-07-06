@@ -660,7 +660,7 @@ export class TikTokMode {
         }
     }
 
-    private loadNode(logicalIndex: number) {
+    private async loadNode(logicalIndex: number) {
         const list = this.pool.getDataPool();
         if (logicalIndex < 0 || logicalIndex >= list.length) return;
 
@@ -669,8 +669,9 @@ export class TikTokMode {
         const video = node.querySelector('.tm-video') as HTMLVideoElement;
         const thumb = node.querySelector('.tm-thumb') as HTMLImageElement;
 
+        const loadPromise = this.pool.loadDetails(item);
+
         if (video.getAttribute('data-index') !== logicalIndex.toString()) {
-            video.src = item.url;
             video.setAttribute('data-index', logicalIndex.toString());
             video.loop = this.loop;
             video.preload = (logicalIndex === this.currentIndex) ? 'auto' : 'metadata';
@@ -687,6 +688,17 @@ export class TikTokMode {
                     video.style.opacity = '1';
                 }
             };
+
+            const resolvedItem = await loadPromise;
+            if (video.getAttribute('data-index') === logicalIndex.toString()) {
+                if (video.src !== resolvedItem.url) {
+                    video.src = resolvedItem.url;
+                    if (logicalIndex === this.currentIndex) {
+                        video.play().catch(e => console.log('Play after load details prevented', e));
+                        this.playCurrent();
+                    }
+                }
+            }
         }
     }
 
@@ -703,7 +715,8 @@ export class TikTokMode {
         
         const item = list[this.currentIndex];
         const videoId = String(item.id);
-        this.titleText.textContent = item.title || 'Video';
+        
+        this.titleText.textContent = item.isDetailsLoaded ? (item.title || `@${item.tweet_account}`) : 'Loading...';
         
         this.updateCountUI();
 

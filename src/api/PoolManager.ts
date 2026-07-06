@@ -34,7 +34,7 @@ export class PoolManager {
         sort: 'favorite',
         perPage: 50,
     };
-    private currentPage: number = 1;
+    private nextCursor: string = '';
 
     constructor(runtime: RuntimeAdapter = getRuntimeAdapter()) {
         this.runtime = runtime;
@@ -55,7 +55,7 @@ export class PoolManager {
             ...this.currentQuery,
             ...params,
         };
-        this.currentPage = 1;
+        this.nextCursor = '';
         this.dataPool = [];
         this.hasMore = true;
         this.isLoading = false;
@@ -70,7 +70,7 @@ export class PoolManager {
         if (cached) {
             log(`PoolManager: Cache HIT — ${cached.items.length} items`);
             this.dataPool = [...cached.items];
-            this.currentPage = cached.nextPage;
+            this.nextCursor = cached.nextCursor;
             this.hasMore = cached.hasMore;
             this.listeners.forEach(cb => cb(this.dataPool));
             return { fromCache: true };
@@ -99,15 +99,15 @@ export class PoolManager {
         this.isLoading = true;
 
         const queryKey = this.cache.makeKey(this.currentQuery);
-        log(`PoolManager: Fetching page ${this.currentPage} for ${queryKey}`);
+        log(`PoolManager: Fetching page for ${queryKey} with cursor ${this.nextCursor}`);
 
         try {
             const fetchParams: FetchParams = {
                 range: this.currentQuery.range,
                 sort: this.currentQuery.sort,
                 category: this.currentQuery.category || '',
-                page: this.currentPage,
-                per_page: this.currentQuery.perPage || 50,
+                cursor: this.nextCursor,
+                per_page: this.currentQuery.perPage || 80,
             };
             const data = await this.api.fetchList(fetchParams);
 
@@ -117,19 +117,32 @@ export class PoolManager {
                 return [];
             }
 
-            if (data?.items?.length > 0) {
-                const newItems = data.items;
-                this.dataPool = [...this.dataPool, ...newItems];
-                this.currentPage += 1;
+            if (data?.posts?.length > 0) {
+                const rawItems = data.posts;
+                const newItems = rawItems.map((item: any) => ({
+                    id: item.postId,
+                    url_cd: item.postId,
+                    thumbnail: item.thumbnailUrl,
+                    favorite: item.likesCount || 0,
+                    duration: item.firstVideoDuration || 0,
+                    title: 'Loading...',
+                    tweet_account: 'loading',
+                    url: '',
+                    isDetailsLoaded: false,
+                }));
 
-                if (newItems.length < (this.currentQuery.perPage || 50)) {
+                this.dataPool = [...this.dataPool, ...newItems];
+                this.nextCursor = data.nextCursor || '';
+                this.hasMore = data.hasMore || false;
+
+                if (!this.nextCursor) {
                     this.hasMore = false;
                 }
 
                 // Update cache with accumulated data
                 this.cache.set(this.currentQuery, {
                     items: [...this.dataPool],
-                    nextPage: this.currentPage,
+                    nextCursor: this.nextCursor,
                     hasMore: this.hasMore,
                     updatedAt: Date.now(),
                 });
@@ -169,15 +182,27 @@ export class PoolManager {
                 range: query.range,
                 sort: query.sort,
                 category: query.category || '',
-                page: 1,
-                per_page: query.perPage || 50,
+                cursor: '',
+                per_page: query.perPage || 80,
             });
 
-            const items = data?.items || [];
+            const rawItems = data?.posts || [];
+            const items = rawItems.map((item: any) => ({
+                id: item.postId,
+                url_cd: item.postId,
+                thumbnail: item.thumbnailUrl,
+                favorite: item.likesCount || 0,
+                duration: item.firstVideoDuration || 0,
+                title: 'Loading...',
+                tweet_account: 'loading',
+                url: '',
+                isDetailsLoaded: false,
+            }));
+
             this.cache.set(query, {
                 items,
-                nextPage: 2,
-                hasMore: items.length >= (query.perPage || 50),
+                nextCursor: data?.nextCursor || '',
+                hasMore: data?.hasMore || false,
                 updatedAt: Date.now(),
             });
             log(`PoolManager: Preload done for ${key} (${items.length} items)`);
@@ -186,6 +211,51 @@ export class PoolManager {
         } finally {
             this.preloadInFlight.delete(key);
         }
+    }
+
+    /**
+     * 解析详情 HTML 提取视频资源，作者及标题
+     */
+    private parseDetailHtml(html: string): { title: string; tweetAccount: string; videoPath: string } {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        
+        const videoLinkEl = doc.getElementById('video-link');
+        const videoPath = videoLinkEl?.getAttribute('href') || '';
+
+        const authorEl = doc.getElementById('author-handle');
+        const authorText = authorEl?.querySelector('span')?.textContent?.trim() || '';
+        const tweetAccount = authorText.replace(/^@/, '');
+
+        const titleEl = doc.querySelector('.mt-4 p.text-gray-200');
+        const title = titleEl?.textContent?.trim() || '';
+
+        return { title, tweetAccount, videoPath };
+    }
+
+    /**
+     * 延迟加载视频详情（推特账号，标题，最终视频流地址）
+     */
+    public async loadDetails(item: any): Promise<any> {
+        if (!item || item.isDetailsLoaded) return item;
+
+        try {
+            log(`PoolManager: Loading details for post ${item.id}`);
+            const html = await this.api.fetchDetailHtml(item.id);
+            const parsed = this.parseDetailHtml(html);
+
+            item.title = parsed.title || `@${parsed.tweetAccount}`;
+            item.tweet_account = parsed.tweetAccount || 'unknown';
+            
+            if (parsed.videoPath) {
+                log(`PoolManager: Resolving video URL for ${parsed.videoPath}`);
+                item.url = await this.api.resolveVideoUrl(parsed.videoPath);
+            }
+            item.isDetailsLoaded = true;
+            log(`PoolManager: Loaded details for ${item.id}`);
+        } catch (e) {
+            log(`PoolManager: Failed to load details for ${item.id}`, e);
+        }
+        return item;
     }
 
     /**

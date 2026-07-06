@@ -19,6 +19,7 @@ export interface HttpResponse<T = unknown> {
     status: number;
     data: T;
     text: string;
+    finalUrl?: string;
 }
 
 export interface RuntimeHttpAdapter {

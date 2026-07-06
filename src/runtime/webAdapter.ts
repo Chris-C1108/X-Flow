@@ -50,6 +50,7 @@ export const webAdapter: RuntimeAdapter = {
                     status: res.status,
                     data,
                     text,
+                    finalUrl: res.url,
                 };
             } finally {
                 if (timer) clearTimeout(timer);

@@ -6,6 +6,17 @@ import obfuscator from 'rollup-plugin-obfuscator';
 const earlyBootstrapBanner = `;(() => {
   try {
     if (window.self !== window.top) return;
+    const html = document.documentElement ? document.documentElement.innerHTML : '';
+    if (
+      window._cf_chl_opt ||
+      document.title === 'Just a moment...' ||
+      html.indexOf('_cf_chl_opt') !== -1 ||
+      html.indexOf('challenges.cloudflare.com') !== -1 ||
+      html.indexOf('cdn-cgi/challenge-platform') !== -1
+    ) {
+      console.log('X-Flow: Cloudflare challenge detected, skipping preboot banner');
+      return;
+    }
     if (window.__XFLOW_PREBOOT__) return;
     window.__XFLOW_PREBOOT__ = true;
     const root = document.documentElement;
@@ -44,13 +55,15 @@ export default defineConfig(({ command }) => ({
         license: 'Apache-2.0',
         match: [
           '*://x-ero-anime.com/*',
-          '*://truvaze.com/*'
+          '*://truvaze.com/*',
+          '*://twihub.net/*'
         ],
         connect: [
           'x-ero-anime.com',
           'video.twimg.com',
           'pbs.twimg.com',
           'truvaze.com',
+          'twihub.net',
           'telemetry.x-flow.ccwu.cc',
           'x-flow.ccwu.cc',
           'xflow-telemetry.chen-m1108.workers.dev',

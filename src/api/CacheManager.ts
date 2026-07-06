@@ -10,7 +10,7 @@ export interface QueryState {
 
 export interface CacheEntry {
     items: any[];
-    nextPage: number;
+    nextCursor: string;
     hasMore: boolean;
     updatedAt: number;
 }
@@ -43,7 +43,7 @@ export class CacheManager {
 
     public set(q: QueryState, entry: CacheEntry): void {
         const key = this.makeKey(q);
-        log(`Cache SET: ${key} (${entry.items.length} items, nextPage=${entry.nextPage})`);
+        log(`Cache SET: ${key} (${entry.items.length} items, nextCursor=${entry.nextCursor})`);
         this.store.set(key, { ...entry, updatedAt: Date.now() });
     }
 

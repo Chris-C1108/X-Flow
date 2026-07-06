@@ -30,6 +30,24 @@ if (_hasInitFlag && _appHealthy) {
     _clearEarlyBootArtifacts();
     console.info('X-Flow: duplicate bootstrap detected, app already healthy');
 } else {
+    const _html = document.documentElement ? document.documentElement.innerHTML : '';
+    const _isCf = (window as any)._cf_chl_opt || 
+                  document.title === 'Just a moment...' || 
+                  _html.indexOf('_cf_chl_opt') !== -1 || 
+                  _html.indexOf('challenges.cloudflare.com') !== -1 ||
+                  _html.indexOf('cdn-cgi/challenge-platform') !== -1;
+
+    if (_isCf) {
+        console.warn('X-Flow: Cloudflare challenge page detected, aborting takeover.');
+        _clearEarlyBootArtifacts();
+        const root = document.documentElement;
+        if (root) {
+            root.style.background = '';
+            root.style.overflow = '';
+        }
+        throw new Error('X-Flow: Aborted due to Cloudflare challenge');
+    }
+
     // 重复注入但实例不健康时，允许强制重启（而不是直接跳过导致永久 loading）
     (window as any).__XFLOW_INIT__ = true;
 
