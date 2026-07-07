@@ -155,12 +155,7 @@ export class EventCollector {
 
     private async postToWorker(path: string, body: object, isFallback = false): Promise<void> {
         const ts = Date.now();
-        let baseUrl: string;
-        if (this.runtime.env.mode === 'web') {
-            baseUrl = window.location.origin;
-        } else {
-            baseUrl = isFallback ? WORKER_URL_FALLBACK : WORKER_URL_PRIMARY;
-        }
+        const baseUrl = isFallback ? WORKER_URL_FALLBACK : WORKER_URL_PRIMARY;
 
         try {
             const res = await this.runtime.http.request({
@@ -175,11 +170,11 @@ export class EventCollector {
                 timeoutMs: 8000,
             });
 
-            if (res.status !== 200 && !isFallback && this.runtime.env.mode !== 'web') {
+            if (res.status !== 200 && !isFallback) {
                 await this.postToWorker(path, body, true);
             }
         } catch {
-            if (!isFallback && this.runtime.env.mode !== 'web') {
+            if (!isFallback) {
                 await this.postToWorker(path, body, true);
             }
         }
@@ -190,12 +185,7 @@ export class EventCollector {
 
         const doRequest = async (isFallback: boolean): Promise<RecommendResult> => {
             const ts = Date.now();
-            let baseUrl: string;
-            if (this.runtime.env.mode === 'web') {
-                baseUrl = window.location.origin;
-            } else {
-                baseUrl = isFallback ? WORKER_URL_FALLBACK : WORKER_URL_PRIMARY;
-            }
+            const baseUrl = isFallback ? WORKER_URL_FALLBACK : WORKER_URL_PRIMARY;
 
             const res = await this.runtime.http.request<RecommendResult>({
                 method: 'GET',
@@ -217,7 +207,6 @@ export class EventCollector {
         try {
             return await doRequest(false);
         } catch {
-            if (this.runtime.env.mode === 'web') return empty;
             try {
                 return await doRequest(true);
             } catch {

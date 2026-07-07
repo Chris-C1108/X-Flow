@@ -22,8 +22,12 @@ export class VirtualList {
             // Each node uses the existing CSS rules + transform hooks
             node.style.cssText = 'position: absolute; inset: 0; transition: transform 0.35s cubic-bezier(0.25, 1, 0.5, 1); transform: translateY(100%); z-index: 1;';
             node.innerHTML = `
-                <img class="tm-thumb hidden" alt="">
-                <video class="tm-video" playsinline webkit-playsinline preload="metadata" referrerpolicy="no-referrer"></video>
+                <img class="tm-thumb hidden" alt="" referrerpolicy="no-referrer">
+                <video class="tm-video" playsinline webkit-playsinline preload="metadata"></video>
+                <div class="tm-error-overlay hidden">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+                    <span>视频已被作者或 Twitter 删除</span>
+                </div>
             `;
             this.container.appendChild(node);
             this.nodes.push(node);

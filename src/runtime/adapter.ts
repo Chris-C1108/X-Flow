@@ -1,4 +1,4 @@
-export type RuntimeMode = 'userscript' | 'web';
+export type RuntimeMode = 'userscript';
 
 export interface RuntimeEnv {
     mode: RuntimeMode;

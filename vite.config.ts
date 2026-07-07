@@ -56,7 +56,16 @@ export default defineConfig(({ command }) => ({
         match: [
           '*://x-ero-anime.com/*',
           '*://truvaze.com/*',
-          '*://twihub.net/*'
+          '*://twihub.net/*',
+          '*://*.twikeep.com/*',
+          '*://*.twiidol.com/*',
+          '*://*.twiigle.com/*',
+          '*://*.monsnode.com/*',
+          '*://*.twivideo.net/*',
+          '*://*.xiaohuangniao.me/*',
+          '*://*.twidouga.net/*',
+          '*://*.javtwi.com/*',
+          '*://*.xhotvideo.com/*'
         ],
         connect: [
           'x-ero-anime.com',

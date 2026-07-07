@@ -35,10 +35,6 @@ X-Flow/
 │   └── wrangler.toml      # CF Worker 部署配置（含 D1 / KV 绑定）
 ├── scripts/
 │   └── analyze.py         # Python 离线分析（高光提取 + 协同过滤 → 写回 D1）
-├── .agents/
-│   ├── knowledge/         # 经验教训文件（详见下方 Experience Index）
-│   ├── dev-docs/          # PRD 等产品文档
-│   └── todo/              # 待办 & 已完成任务（含 v6/v7 设计与计划文档）
 └── src/
     ├── main.ts            # Entry point — 调用 Sandbox.initialize()
     ├── api/
@@ -52,6 +48,11 @@ X-Flow/
     │   ├── TikTokMode.ts  # ⭐ 核心播放器 — 3-node VirtualList 滑动
     │   ├── TinderMode.ts  # Tinder 模式 (placeholder)
     │   └── VirtualList.ts # 虚拟列表节点池（3 个 DOM 节点循环复用）
+    ├── runtime/           # ⭐ 运行时适配层 (仅保留 userscript)
+    │   ├── adapter.ts     # 适配器接口
+    │   ├── global.d.ts    # 全局 GM API 类型声明
+    │   ├── index.ts       # 获取运行时适配器
+    │   └── userscriptAdapter.ts # Userscript 适配器实现
     ├── ui/
     │   ├── Sandbox.ts     # ⭐ 沙盒 — 接管页面, 防御 React Hydration
     │   ├── Layout.ts      # 主布局 — 频道切换, 视频列表, 播放器
@@ -102,6 +103,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 
 | 版本 | 设计/计划文档 | 当前阶段 | 整体进度 |
 |------|---------------|----------|----------|
+| **v8.0.0** | [implementation_plan.md](file:///C:/Users/chenahao/.gemini/antigravity/brain/314368e0-b730-47ea-be57-bafe0048377e/implementation_plan.md) | M1 — 适配器与作者面板开发 | ✅ 完成 |
 | **v7.0.0** | [v7.0_pages_functions_proxy_Desgin.md](.agents/todo/v7.0_pages_functions_proxy_Desgin.md) + [v7.0_pages_functions_proxy_plan.md](.agents/todo/v7.0_pages_functions_proxy_plan.md) | M6 — 回归验证与发布收尾 | ✅ 完成 |
 | v6.0.0 | [v6.0.0_plan.md](.agents/todo/v6.0.0_plan.md) | 收尾（推荐闭环延后） | ⏭️ 冻结 |
 
@@ -186,6 +188,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 18 | redirect, ad, 重定向, 广告, nuclear, 核平, window.stop, inline script, reload loop | 【TM-ONLY】 ✅ **SOLVED** — `document.open()` + CSP meta in `<head>` blocks all 3rd-party scripts at browser level; no Content Blocker needed | [anti_ad_redirect_postmortem.md](.agents/knowledge/anti_ad_redirect_postmortem.md) |
 | 19 | CSP, Content-Security-Policy, meta, document.open, document.write, 第三方脚本, frame-src, script-src | 【TM-ONLY】 ✅ The winning pattern: `document.open()` + CSP meta in clean document; GM API unaffected by CSP | [csp_meta_document_open_solution.md](.agents/knowledge/csp_meta_document_open_solution.md) |
 | 23 | appRoot, xflow-app-root, dataset null, document.write missing node, Cannot read properties of null | 【TM-ONLY】 Self-heal `#xflow-app-root` inside Sandbox before touching `.dataset` or Layout init | [app_root_self_heal_after_document_write.md](.agents/knowledge/app_root_self_heal_after_document_write.md) |
+| 28 | fetch, GET, TypeError, credentials, Cloudflare, WAF, Turnstile, cf_clearance, same-origin | 【TM-ONLY】 Add `credentials: 'include'` and omit `body` entirely on GET/HEAD fetch calls | [same_origin_fetch_credentials.md](.agents/knowledge/same_origin_fetch_credentials.md) |
 
 ### 🛠️ Build & Syntax
 
@@ -209,6 +212,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 24 | hc-card-overlay, leak, 漏光, seam, subpixel, 遮罩不全, 边缘透出, 底部透出 | Hero overlay needs `inset:-1px` overscan + `isolation:isolate` + paint containment to avoid subpixel seams | [hero_overlay_light_leak_fix.md](.agents/knowledge/hero_overlay_light_leak_fix.md) |
 | 25 | media-grid only 3 items, cache key, perPage, hero preload, 主列表只有3条, 缓存污染 | Cache key must include `category` + `perPage`; avoid Hero(3) polluting grid(50) cache | [cache_key_per_page_collision.md](.agents/knowledge/cache_key_per_page_collision.md) |
 | 27 | twihub, cursor, detail, redirect | SvelteKit cursor pagination + lazy HTML detail parsing & redirect resolving | [twihub_api_and_details_lazy_load.md](.agents/knowledge/twihub_api_and_details_lazy_load.md) |
+| 29 | referrerpolicy, video, twimg, CDN, 403, buffer | 【TM-ONLY】 NEVER set referrerpolicy on `<video>` tag; rely on document-level meta referrer | [video_tag_referrer_policy.md](.agents/knowledge/video_tag_referrer_policy.md) |
 
 ### 🚀 Deployment & Pages
 

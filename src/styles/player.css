@@ -336,3 +336,74 @@
         }
 
         #tm-comment-btn { display: none !important; }
+
+        /* ── M2-6: 博主主页/相关视频面板 ────────────────────────────────────── */
+        .tm-author-panel { position: absolute; top: 0; bottom: 0; right: 0; width: 380px; background: rgba(18, 18, 22, 0.96); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-left: 1px solid var(--glass-border); z-index: 100; transform: translateX(100%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); display: flex; flex-direction: column; box-shadow: -4px 0 20px rgba(0,0,0,0.5); pointer-events: auto; }
+        .tm-author-panel.active { transform: translateX(0); }
+        .tm-author-header { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .tm-author-title { font-weight: 700; font-size: 16px; color: #fff; }
+        .tm-author-close { background: none; border: none; color: #fff; cursor: pointer; padding: 4px; display: flex; align-items: center; opacity: 0.8; transition: opacity 0.2s; }
+        .tm-author-close:hover { opacity: 1; }
+        .tm-author-close svg { width: 22px; height: 22px; fill: currentColor; }
+        .tm-author-profile { padding: 20px; display: flex; flex-direction: column; gap: 14px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .tm-author-profile-top { display: flex; align-items: center; gap: 16px; }
+        .tm-author-avatar-big { width: 56px; height: 56px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid var(--theme-accent); display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700; color: #fff; text-transform: uppercase; }
+        .tm-author-info-text { display: flex; flex-direction: column; gap: 4px; }
+        .tm-author-name-big { font-size: 16px; font-weight: 700; color: #fff; }
+        .tm-author-handle-big { font-size: 13px; color: var(--text-400); }
+        .tm-author-external-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: var(--theme-accent); color: #fff; border: none; border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 700; cursor: pointer; text-decoration: none; transition: opacity 0.2s, transform 0.2s; text-align: center; }
+        .tm-author-external-btn:hover { opacity: 0.95; }
+        .tm-author-external-btn:active { transform: scale(0.98); }
+        .tm-author-videos-grid { flex: 1; overflow-y: auto; padding: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; overscroll-behavior: contain; }
+        .tm-author-video-card { position: relative; aspect-ratio: 9/16; border-radius: 6px; overflow: hidden; cursor: pointer; border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.3); transition: transform 0.2s; }
+        .tm-author-video-card:hover { transform: scale(1.03); border-color: var(--theme-accent); }
+        .tm-author-video-card img { width: 100%; height: 100%; object-fit: cover; }
+        .tm-author-video-card .duration { position: absolute; bottom: 4px; right: 4px; background: rgba(0,0,0,0.6); padding: 2px 4px; border-radius: 3px; font-size: 10px; font-weight: 600; color: #fff; }
+        
+        @media (max-width: 768px) {
+            .tm-author-panel { width: 100%; height: 75vh; top: auto; bottom: 0; border-left: none; border-top: 1px solid var(--glass-border); border-top-left-radius: 16px; border-top-right-radius: 16px; transform: translateY(100%); }
+            .tm-author-panel.active { transform: translateY(0); }
+            .tm-author-videos-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+
+        /* ── Site Switcher ────────────────────────────────────── */
+        .site-switch-wrap { position: relative; display: inline-block; pointer-events: auto; }
+        .site-switch-btn { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.08); border: 1px solid var(--glass-border); border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 600; color: #fff; cursor: pointer; transition: all 0.2s ease; font-family: var(--font-body); }
+        .site-switch-btn:hover { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3); }
+        .site-switch-btn svg { transition: transform 0.2s ease; }
+        .site-switch-wrap.active .site-switch-btn svg { transform: rotate(180deg); }
+        .site-switch-dropdown { position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%) scale(0.95); opacity: 0; pointer-events: none; width: 140px; background: rgba(20,20,24,0.96); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid var(--glass-border); border-radius: 12px; padding: 6px 0; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 1000; transition: all 0.2s var(--ease-smooth); transform-origin: top center; display: flex; flex-direction: column; }
+        .site-switch-wrap.active .site-switch-dropdown { opacity: 1; pointer-events: auto; transform: translateX(-50%) scale(1); }
+        .site-dd-item { display: block; width: 100%; padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--text-200); text-decoration: none; text-align: center; transition: all 0.2s; box-sizing: border-box; }
+        .site-dd-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+        .site-dd-item.active { color: var(--theme-accent); font-weight: 700; background: var(--theme-accent-subtle); }
+
+/* Error Overlay styles for deleted/broken videos */
+.tm-error-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(13, 13, 18, 0.85);
+    color: var(--text-200);
+    z-index: 5;
+    font-family: var(--font-title);
+    gap: 12px;
+    padding: 20px;
+    text-align: center;
+}
+.tm-error-overlay svg {
+    width: 48px;
+    height: 48px;
+    color: var(--text-400);
+}
+.tm-error-overlay span {
+    font-size: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+.tm-error-overlay.hidden {
+    display: none !important;
+}

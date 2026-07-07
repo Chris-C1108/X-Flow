@@ -3,6 +3,7 @@ import { CacheManager, QueryState, CacheEntry } from './CacheManager';
 import { log } from '../utils/Logger';
 import { getRuntimeAdapter } from '../runtime';
 import type { RuntimeAdapter } from '../runtime/adapter';
+import { AdapterManager } from './adapters/AdapterManager';
 
 export interface LoadResult {
     fromCache: boolean;
@@ -118,19 +119,7 @@ export class PoolManager {
             }
 
             if (data?.posts?.length > 0) {
-                const rawItems = data.posts;
-                const newItems = rawItems.map((item: any) => ({
-                    id: item.postId,
-                    url_cd: item.postId,
-                    thumbnail: item.thumbnailUrl,
-                    favorite: item.likesCount || 0,
-                    duration: item.firstVideoDuration || 0,
-                    title: 'Loading...',
-                    tweet_account: 'loading',
-                    url: '',
-                    isDetailsLoaded: false,
-                }));
-
+                const newItems = data.posts;
                 this.dataPool = [...this.dataPool, ...newItems];
                 this.nextCursor = data.nextCursor || '';
                 this.hasMore = data.hasMore || false;
@@ -186,18 +175,7 @@ export class PoolManager {
                 per_page: query.perPage || 80,
             });
 
-            const rawItems = data?.posts || [];
-            const items = rawItems.map((item: any) => ({
-                id: item.postId,
-                url_cd: item.postId,
-                thumbnail: item.thumbnailUrl,
-                favorite: item.likesCount || 0,
-                duration: item.firstVideoDuration || 0,
-                title: 'Loading...',
-                tweet_account: 'loading',
-                url: '',
-                isDetailsLoaded: false,
-            }));
+            const items = data?.posts || [];
 
             this.cache.set(query, {
                 items,
@@ -241,14 +219,21 @@ export class PoolManager {
         try {
             log(`PoolManager: Loading details for post ${item.id}`);
             const html = await this.api.fetchDetailHtml(item.id);
-            const parsed = this.parseDetailHtml(html);
-
-            item.title = parsed.title || `@${parsed.tweetAccount}`;
-            item.tweet_account = parsed.tweetAccount || 'unknown';
             
-            if (parsed.videoPath) {
-                log(`PoolManager: Resolving video URL for ${parsed.videoPath}`);
-                item.url = await this.api.resolveVideoUrl(parsed.videoPath);
+            const adapter = AdapterManager.getInstance().getActiveAdapter();
+            const parsed = adapter.parseDetailHtml ? adapter.parseDetailHtml(html) : this.parseDetailHtml(html);
+
+            item.title = parsed.title || item.title || `@${parsed.tweetAccount}`;
+            item.tweet_account = parsed.tweetAccount || item.tweet_account || 'unknown';
+            
+            const videoPath = parsed.videoPath || '';
+            if (videoPath) {
+                log(`PoolManager: Resolving video URL for ${videoPath}`);
+                let resolved = await this.api.resolveVideoUrl(videoPath);
+                if (resolved && resolved.startsWith('http://')) {
+                    resolved = resolved.replace('http://', 'https://');
+                }
+                item.url = resolved;
             }
             item.isDetailsLoaded = true;
             log(`PoolManager: Loaded details for ${item.id}`);

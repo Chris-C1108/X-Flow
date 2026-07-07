@@ -4,6 +4,7 @@ import { formatTime, escapeHtml, formatCount } from '../utils/Format';
 import { loadJSON, saveJSON, loadGM, saveGM, STORAGE_KEYS } from '../engine/Storage';
 import { collector } from '../telemetry/EventCollector';
 import { fetchComments, postComment, Comment } from '../api/CommentService';
+import { AdapterManager } from '../api/adapters/AdapterManager';
 
 function escapeCSSUrl(url: string) {
     return url.replace(/["'\\]/g, '\\$&');
@@ -140,6 +141,29 @@ export class TikTokMode {
                     <input type="text" class="tm-comment-input" id="tm-comment-input" placeholder="输入评论..." />
                     <button class="tm-comment-send" id="tm-comment-send" disabled>发送</button>
                 </div>
+            </div>
+
+            <div class="tm-author-panel" id="tm-author-panel">
+                <div class="tm-author-header">
+                    <span class="tm-author-title">博主主页 / 相关推荐</span>
+                    <button type="button" class="tm-author-close" id="tm-author-close" aria-label="Close author panel">
+                        <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                    </button>
+                </div>
+                <div class="tm-author-profile">
+                    <div class="tm-author-profile-top">
+                        <div class="tm-author-avatar-big" id="tm-author-avatar">U</div>
+                        <div class="tm-author-info-text">
+                            <div class="tm-author-name-big" id="tm-author-name">User</div>
+                            <div class="tm-author-handle-big" id="tm-author-handle">@username</div>
+                        </div>
+                    </div>
+                    <a href="#" class="tm-author-external-btn" id="tm-author-external-link" target="_blank" rel="noopener noreferrer">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+                        在 X.com (Twitter) 查看该博主
+                    </a>
+                </div>
+                <div class="tm-author-videos-grid" id="tm-author-videos-grid"></div>
             </div>
         `;
         this.modal.appendChild(this.uiLayer);
@@ -282,7 +306,17 @@ export class TikTokMode {
 
             if (!isMoving) return;
             isMoving = false;
+            
+            const deltaX = e.changedTouches[0].clientX - startX;
             const deltaY = e.changedTouches[0].clientY - startY;
+
+            // Horizontal swipe left (deltaX < -60) -> Open Author Panel
+            if (deltaX < -60 && Math.abs(deltaY) < 60) {
+                this.vl.updateTransforms(this.currentIndex, 0);
+                this.openAuthorPanel();
+                return;
+            }
+
             this.vl.setTransition(true);
             
             if (deltaY < -70) {
@@ -410,6 +444,13 @@ export class TikTokMode {
 
         commentClose.addEventListener('click', () => {
             commentPanel.classList.remove('active');
+        });
+
+        // M2-6: 博主主页/相关视频面板逻辑
+        const authorPanel = this.uiLayer.querySelector('#tm-author-panel')!;
+        const authorClose = this.uiLayer.querySelector('#tm-author-close')!;
+        authorClose.addEventListener('click', () => {
+            authorPanel.classList.remove('active');
         });
 
         commentInput.addEventListener('input', () => {
@@ -670,11 +711,19 @@ export class TikTokMode {
         const thumb = node.querySelector('.tm-thumb') as HTMLImageElement;
 
         const loadPromise = this.pool.loadDetails(item);
+        const isCurrent = (logicalIndex === this.currentIndex);
 
         if (video.getAttribute('data-index') !== logicalIndex.toString()) {
+            // Abort any ongoing network request for the recycled node
+            video.pause();
+            video.removeAttribute('src');
+            try {
+                video.load(); // Force browser to release media resources
+            } catch {}
+
             video.setAttribute('data-index', logicalIndex.toString());
             video.loop = this.loop;
-            video.preload = (logicalIndex === this.currentIndex) ? 'auto' : 'metadata';
+            video.preload = isCurrent ? 'auto' : 'none';
             thumb.src = item.thumbnail || '';
             node.style.backgroundImage = `url("${escapeCSSUrl(item.thumbnail || '')}")`;
             node.style.backgroundSize = 'cover';
@@ -682,21 +731,37 @@ export class TikTokMode {
             thumb.classList.remove('hidden');
             video.style.opacity = '0';
 
-            video.oncanplay = () => {
+            node.querySelector('.tm-error-overlay')?.classList.add('hidden');
+
+            const showVideo = () => {
                 if (video.getAttribute('data-index') === logicalIndex.toString()) {
                     thumb.classList.add('hidden');
                     video.style.opacity = '1';
+                    node.querySelector('.tm-error-overlay')?.classList.add('hidden');
                 }
             };
+            video.oncanplay = showVideo;
+            video.onplaying = showVideo;
+            video.onloadedmetadata = showVideo;
+            video.onerror = () => {
+                if (video.getAttribute('data-index') === logicalIndex.toString()) {
+                    thumb.classList.add('hidden');
+                    video.style.opacity = '0';
+                    node.querySelector('.tm-error-overlay')?.classList.remove('hidden');
+                }
+            };
+        }
 
-            const resolvedItem = await loadPromise;
-            if (video.getAttribute('data-index') === logicalIndex.toString()) {
+        const resolvedItem = await loadPromise;
+        if (video.getAttribute('data-index') === logicalIndex.toString()) {
+            if (logicalIndex === this.currentIndex) {
                 if (video.src !== resolvedItem.url) {
                     video.src = resolvedItem.url;
-                    if (logicalIndex === this.currentIndex) {
-                        video.play().catch(e => console.log('Play after load details prevented', e));
-                        this.playCurrent();
-                    }
+                }
+                this.playCurrent();
+            } else {
+                if (resolvedItem.url && video.src !== resolvedItem.url && video.preload === 'auto') {
+                    video.src = resolvedItem.url;
                 }
             }
         }
@@ -752,23 +817,18 @@ export class TikTokMode {
         
         video.preload = 'auto';
         video.playbackRate = this.playbackRate;
-        video.play().catch(e => console.log('Autoplay prevented', e));
         video.volume = this.isMuted ? 0 : this.volume;
         video.muted = this.isMuted;
+        video.play().catch(e => console.log('Autoplay prevented', e));
         this.schedulePreload();
 
         const authorBtn = this.uiLayer.querySelector<HTMLButtonElement>('#tm-author-btn');
         if (authorBtn) {
-            const authorUrl = (item as any).author_url || (item as any).authorUrl || '';
-            if (authorUrl) {
-                authorBtn.style.display = '';
-                authorBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    window.open(authorUrl, '_blank', 'noopener,noreferrer');
-                };
-            } else {
-                authorBtn.style.display = 'none';
-            }
+            authorBtn.style.display = '';
+            authorBtn.onclick = (e) => {
+                e.stopPropagation();
+                this.openAuthorPanel();
+            };
         }
 
         video.onleavepictureinpicture = () => {
@@ -809,27 +869,61 @@ export class TikTokMode {
         const list = this.pool.getDataPool();
         if (!list.length) return;
 
-        this.preloadTimer = setTimeout(() => {
-            const nextIdx = this.currentIndex + 1;
-            if (nextIdx < list.length) {
-                const nextNode = this.vl.getNode(nextIdx);
-                const nextVideo = nextNode.querySelector('.tm-video') as HTMLVideoElement;
-                if (nextVideo.src) {
-                    nextVideo.preload = 'auto';
+        const checkAndPreload = () => {
+            const video = this.getCurrentVideo();
+            if (!video) return;
+
+            // Calculate how much has been buffered ahead of current playback time
+            let bufferedAhead = 0;
+            const time = video.currentTime;
+            for (let i = 0; i < video.buffered.length; i++) {
+                const start = video.buffered.start(i);
+                const end = video.buffered.end(i);
+                if (time >= start && time <= end) {
+                    bufferedAhead = end - time;
+                    break;
                 }
             }
 
-            this.preloadTimer = setTimeout(() => {
-                const prevIdx = this.currentIndex - 1;
-                if (prevIdx >= 0) {
-                    const prevNode = this.vl.getNode(prevIdx);
-                    const prevVideo = prevNode.querySelector('.tm-video') as HTMLVideoElement;
-                    if (prevVideo.src) {
-                        prevVideo.preload = 'auto';
-                    }
+            // Standard requirements for active video safety:
+            // 1. readyState >= 3 (HAVE_FUTURE_DATA - can play without stuttering)
+            // 2. Or buffered ahead is at least 6 seconds
+            // 3. Or the video has already ended
+            const isSafeToPreload = video.readyState >= 3 || bufferedAhead >= 6 || video.ended;
+
+            if (isSafeToPreload) {
+                const nextIdx = this.currentIndex + 1;
+                if (nextIdx < list.length) {
+                    this.preloadNode(nextIdx);
                 }
-            }, 2000);
-        }, 2000);
+            } else {
+                // Not safe yet, re-check in 1500ms to preserve current video's bandwidth
+                this.preloadTimer = setTimeout(checkAndPreload, 1500);
+            }
+        };
+
+        // Start checking 2 seconds after play starts
+        this.preloadTimer = setTimeout(checkAndPreload, 2000);
+    }
+
+    private async preloadNode(logicalIndex: number) {
+        const list = this.pool.getDataPool();
+        if (logicalIndex < 0 || logicalIndex >= list.length) return;
+
+        const item = list[logicalIndex];
+        const node = this.vl.getNode(logicalIndex);
+        const video = node.querySelector('.tm-video') as HTMLVideoElement;
+
+        const resolvedItem = await this.pool.loadDetails(item);
+
+        if (video.getAttribute('data-index') === logicalIndex.toString()) {
+            if (logicalIndex !== this.currentIndex) {
+                video.preload = 'auto';
+                if (video.src !== resolvedItem.url) {
+                    video.src = resolvedItem.url;
+                }
+            }
+        }
     }
 
     private getCurrentVideo(): HTMLVideoElement {
@@ -973,5 +1067,115 @@ export class TikTokMode {
             m.remove();
         }
         this.highlightMarkers = [];
+    }
+
+    // ── M2-6: 博主主页/相关推荐面板数据加载 ───────────────────────────
+    private async openAuthorPanel() {
+        const authorPanel = this.uiLayer.querySelector('#tm-author-panel')!;
+        authorPanel.classList.add('active');
+
+        // Close comment panel if open
+        const commentPanel = this.uiLayer.querySelector('#tm-comment-panel')!;
+        commentPanel.classList.remove('active');
+
+        const list = this.pool.getDataPool();
+        if (!list.length) return;
+        const item = list[this.currentIndex];
+        
+        const avatarEl = authorPanel.querySelector('#tm-author-avatar') as HTMLElement;
+        const nameEl = authorPanel.querySelector('#tm-author-name') as HTMLElement;
+        const handleEl = authorPanel.querySelector('#tm-author-handle') as HTMLElement;
+        const externalLinkEl = authorPanel.querySelector('#tm-author-external-link') as HTMLAnchorElement;
+        const gridEl = authorPanel.querySelector('#tm-author-videos-grid') as HTMLElement;
+
+        const username = item.tweet_account || 'unknown';
+        const displayName = item.authorDisplayName || username;
+
+        // Render profile info
+        if (avatarEl) avatarEl.textContent = displayName.charAt(0);
+        if (nameEl) nameEl.textContent = displayName;
+        if (handleEl) handleEl.textContent = (username !== 'unknown' && username !== 'loading') ? `@${username}` : '';
+        
+        if (externalLinkEl) {
+            if (username && username !== 'unknown' && username !== 'loading') {
+                externalLinkEl.style.display = 'inline-flex';
+                externalLinkEl.href = `https://x.com/${username}`;
+            } else {
+                externalLinkEl.style.display = 'none';
+            }
+        }
+
+        // Fetch videos
+        gridEl.innerHTML = '<div class="tm-comment-loading"><div class="spinner"></div></div>';
+
+        try {
+            const adapter = AdapterManager.getInstance().getActiveAdapter();
+            let result = null;
+            if (adapter.fetchAuthorVideos && username && username !== 'unknown' && username !== 'loading') {
+                result = await adapter.fetchAuthorVideos(username);
+            }
+            
+            // Fallback: If no author-specific videos are found, display the current dataPool items (as Related Videos)
+            const videos = (result && result.posts && result.posts.length > 0) ? result.posts : list.slice(0, 15);
+            
+            if (videos.length === 0) {
+                gridEl.innerHTML = '<div class="tm-comment-empty">暂无相关视频</div>';
+                return;
+            }
+
+            gridEl.innerHTML = videos.map((video) => {
+                const durationStr = video.duration > 0 ? this.formatDuration(video.duration) : '';
+                return `
+                    <div class="tm-author-video-card" data-id="${video.id}">
+                        <img src="${video.thumbnail}" alt="Thumbnail" loading="lazy" referrerpolicy="no-referrer" />
+                        ${durationStr ? `<span class="duration">${durationStr}</span>` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            // Bind click handlers to cards
+            gridEl.querySelectorAll('.tm-author-video-card').forEach(card => {
+                card.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const targetId = card.getAttribute('data-id') || '';
+                    if (!targetId) return;
+
+                    // Close panel
+                    authorPanel.classList.remove('active');
+
+                    // Find if the video is already in the dataPool
+                    const poolIdx = list.findIndex(v => v.id === targetId);
+                    if (poolIdx >= 0) {
+                        // If it's already in the pool, slide to it!
+                        const diff = poolIdx - this.currentIndex;
+                        if (diff !== 0) {
+                            this.navigate(diff);
+                        }
+                    } else {
+                        // If it's not in the pool, find it in the fetched author/related list
+                        const clickedVideo = videos.find(v => v.id === targetId);
+                        if (clickedVideo) {
+                            // Insert it after the current index and navigate to it!
+                            list.splice(this.currentIndex + 1, 0, clickedVideo);
+                            this.navigate(1);
+                        }
+                    }
+                });
+            });
+
+        } catch (err) {
+            console.error('Failed to load author videos', err);
+            gridEl.innerHTML = '<div class="tm-comment-empty">加载视频失败</div>';
+        }
+    }
+
+    private formatDuration(seconds: number): string {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = Math.floor(seconds % 60);
+        if (h > 0) {
+            return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+        return `${m}:${String(s).padStart(2, '0')}`;
     }
 }

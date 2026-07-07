@@ -22,6 +22,42 @@ export const Components = {
         `;
     },
 
+    getSiteSwitchHTML() {
+        const sites = [
+            { name: 'TwiHub', url: 'https://twihub.net' },
+            { name: 'TwiKeep', url: 'https://www.twikeep.com' },
+            { name: 'TwiIdol', url: 'https://www.twiidol.com' },
+            { name: 'Twiigle', url: 'https://twiigle.com' },
+            { name: 'Monsnode', url: 'https://monsnode.com' },
+            { name: 'TwiVideo', url: 'https://twivideo.net' },
+            { name: '小黄鸟', url: 'https://xiaohuangniao.me' },
+            { name: 'TwiDouga', url: 'https://www.twidouga.net' },
+            { name: 'JavTwi', url: 'https://javtwi.com' },
+            { name: 'XHotVideo', url: 'https://xhotvideo.com' }
+        ];
+
+        const hostname = window.location.hostname;
+        const currentSite = sites.find(s => hostname.includes(s.url.replace('https://', '').replace('www.', '')));
+        const currentSiteName = currentSite ? currentSite.name : 'TwiHub';
+
+        const listItems = sites.map(s => {
+            const isActive = hostname.includes(s.url.replace('https://', '').replace('www.', ''));
+            return `<a href="${s.url}" class="site-dd-item ${isActive ? 'active' : ''}" target="_blank" rel="noopener">${s.name}</a>`;
+        }).join('');
+
+        return `
+            <div class="site-switch-wrap" id="site-switch-wrap">
+                <button type="button" class="site-switch-btn" id="site-switch-btn">
+                    <span>${currentSiteName}</span>
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+                </button>
+                <div class="site-switch-dropdown" id="site-switch-dropdown">
+                    ${listItems}
+                </div>
+            </div>
+        `;
+    },
+
     getTopBarHTML(isAnimeActive: boolean = false) {
         const rActive = !isAnimeActive ? 'active' : '';
         const aActive = isAnimeActive ? 'active' : '';
@@ -46,6 +82,7 @@ export const Components = {
                         <button type="button" class="channel-btn ${rActive}" data-channel="real" role="tab" aria-selected="${!isAnimeActive}">Real 次元</button>
                         <button type="button" class="channel-btn ${aActive}" data-channel="anime" role="tab" aria-selected="${isAnimeActive}">Anime 动漫</button>
                     </div>
+                    ${this.getSiteSwitchHTML()}
                     <div class="mobile-menu-btn-wrap" id="sort-menu-wrap">
                         <button type="button" class="mobile-circle-btn" id="mobile-sort-btn" aria-label="Sort Filter" aria-expanded="false">
                             <svg viewBox="0 0 24 24" width="18" height="18" fill="#fff"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>

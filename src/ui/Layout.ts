@@ -179,16 +179,29 @@ export class Layout {
             });
         });
 
-        // Mobile dropdown toggles
+        // Mobile dropdown toggles and Site Switcher
         const rangeBtn = document.getElementById('mobile-range-btn');
         const rangeDropdown = document.getElementById('range-dropdown');
         const sortBtn2 = document.getElementById('mobile-sort-btn');
         const sortDropdown = document.getElementById('sort-dropdown');
+        
+        const siteSwitchWrap = document.getElementById('site-switch-wrap');
+        const siteSwitchBtn = document.getElementById('site-switch-btn');
 
         const closeAllDropdowns = () => {
             [rangeDropdown, sortDropdown].forEach(dd => dd?.classList.remove('open'));
             [rangeBtn, sortBtn2].forEach(btn => btn?.setAttribute('aria-expanded', 'false'));
+            siteSwitchWrap?.classList.remove('active');
         };
+
+        siteSwitchBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isActive = siteSwitchWrap?.classList.contains('active');
+            closeAllDropdowns();
+            if (!isActive) {
+                siteSwitchWrap?.classList.add('active');
+            }
+        });
 
         rangeBtn?.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -916,7 +929,7 @@ export class Layout {
 
             html += `
             <div class="media-card" style="animation-delay: ${(i % 20) * 0.05}s" data-index="${i}" ${item.url ? `data-video-url="${escapeHtml(item.url)}"` : ''} role="button" tabindex="0" aria-label="${escapeHtml(item.title || 'Video card')}">
-                <img src="${item.thumbnail}" alt="${escapeHtml(item.title || 'Thumbnail')}" class="card-img" loading="lazy">
+                <img src="${item.thumbnail}" alt="${escapeHtml(item.title || 'Thumbnail')}" class="card-img" loading="lazy" referrerpolicy="no-referrer">
                 <div class="card-overlay"></div>
                 <div class="card-rank ${rankClass}">No.${rankNum}</div>
                 <div class="card-play-icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
