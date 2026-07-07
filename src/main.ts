@@ -30,6 +30,18 @@ if (_hasInitFlag && _appHealthy) {
     _clearEarlyBootArtifacts();
     console.info('X-Flow: duplicate bootstrap detected, app already healthy');
 } else {
+    const _isXiaoHuangNiao = window.location.hostname.includes('xiaohuangniao.me');
+    if (_isXiaoHuangNiao) {
+        console.info('X-Flow: Running on xiaohuangniao.me, aborting takeover.');
+        _clearEarlyBootArtifacts();
+        const root = document.documentElement;
+        if (root) {
+            root.style.background = '';
+            root.style.overflow = '';
+        }
+        throw new Error('X-Flow: Aborted on xiaohuangniao.me');
+    }
+
     const _html = document.documentElement ? document.documentElement.innerHTML : '';
     const _isCf = (window as any)._cf_chl_opt || 
                   document.title === 'Just a moment...' || 
