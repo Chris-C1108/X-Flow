@@ -1,6 +1,6 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
 import { parseTwitterHandleFromUrl, normalizeVideoUrl } from './Helper';
 
 export class TwidougaAdapter implements SiteAdapter {
@@ -11,16 +11,29 @@ export class TwidougaAdapter implements SiteAdapter {
         return hostname.includes('twidouga.net');
     }
 
+    getFilterGroups(isAnime: boolean): FilterGroup[] {
+        return [
+            {
+                id: 'range',
+                title: '排行 Period',
+                type: 'range',
+                options: [
+                    { id: 'realtime', label: '实时排行', en: 'Realtime' }
+                ]
+            }
+        ];
+    }
+
+    getHeroRanges(isAnime: boolean): HeroRange[] {
+        return []; // Hides carousel
+    }
+
     async fetchList(params: FetchParams, isAnime: boolean): Promise<FetchListResult> {
         const runtime = getRuntimeAdapter();
         const origin = window.location.origin;
         const page = params.cursor || '1';
 
-        // TwiDouga has realtime list under /jp/realtime_t1.php
-        let path = `/jp/realtime_t${page}.php`;
-        if (params.range === 'weekly') {
-            path = `/jp/weekly_t${page}.php`;
-        }
+        const path = `/jp/realtime_t${page}.php`;
 
         const res = await runtime.http.request<string>({
             method: 'GET',

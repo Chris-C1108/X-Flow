@@ -1,38 +1,127 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
 import { parseDuration, parseViews } from './Helper';
 
 export class XHotVideoAdapter implements SiteAdapter {
     id = 'xhotvideo';
     name = 'XHotVideo (HTML Scraper)';
 
+    private static readonly RANGE_MAP: Record<string, string> = {
+        daily: 'day',
+        weekly: 'week',
+        monthly: 'month',
+        all: 'total',
+        day: 'day',
+        week: 'week',
+        month: 'month',
+        total: 'total'
+    };
+
     matches(hostname: string): boolean {
         return hostname.includes('xhotvideo.com');
+    }
+
+    getFilterGroups(isAnime: boolean): FilterGroup[] {
+        return [
+            {
+                id: 'range',
+                title: '榜单 Period',
+                type: 'range',
+                options: [
+                    { id: 'day', label: '今日热门', en: 'Daily' },
+                    { id: 'week', label: '本周热门', en: 'Weekly' },
+                    { id: 'month', label: '本月热门', en: 'Monthly' },
+                    { id: 'all', label: '全部热门', en: 'All-Time' },
+                    { id: 'total', label: '总热门', en: 'Total' }
+                ]
+            },
+            {
+                id: 'sort',
+                title: '排序 Sort',
+                type: 'sort',
+                options: [
+                    { id: 'views', label: '播放最多' },
+                    { id: 'new', label: '最新发布' },
+                    { id: 'duration', label: '时长最长' }
+                ]
+            },
+            {
+                id: 'duration',
+                title: '时长 Duration',
+                type: 'duration',
+                options: [
+                    { id: 'all', label: '全部时长' },
+                    { id: 'short', label: '5 分钟内' },
+                    { id: 'medium', label: '5-30 分钟' },
+                    { id: 'long', label: '30 分钟以上' }
+                ]
+            },
+            {
+                id: 'tag',
+                title: '标签 Tags',
+                type: 'tag',
+                options: [
+                    { id: 'all', label: '全部标签' },
+                    { id: 'anime', label: '动漫二次元' },
+                    { id: 'jk', label: '女高中生' },
+                    { id: 'kyonyu', label: '丰满胸部' },
+                    { id: 'lolita', label: '少女萝莉' },
+                    { id: 'shaved', label: '光滑白虎' },
+                    { id: 'beautiful-girl', label: '美少女' },
+                    { id: 'hamedori', label: '真实自拍' }
+                ]
+            }
+        ];
+    }
+
+    getHeroRanges(isAnime: boolean): HeroRange[] {
+        return [
+            { id: 'day', label: '今日热门', en: 'Daily', icon: '⏱' },
+            { id: 'week', label: '本周热门', en: 'Weekly', icon: '📅' },
+            { id: 'month', label: '本月热门', en: 'Monthly', icon: '🗓' },
+            { id: 'total', label: '总热门', en: 'Total', icon: '🏆' }
+        ];
     }
 
     async fetchList(params: FetchParams, isAnime: boolean): Promise<FetchListResult> {
         const runtime = getRuntimeAdapter();
         const origin = window.location.origin;
         
-        // Map sort / range to URLs
-        let path = '/videos';
         const page = params.cursor || '1';
+        let path = '/videos';
 
-        if (params.sort === 'recent') {
-            path = `/videos/sort/new/page/${page}`;
-        } else if (params.sort === 'favorite') {
-            path = `/videos/sort/favorite/page/${page}`;
-        } else if (params.range === 'daily') {
-            path = `/videos/period/day/page/${page}`;
-        } else if (params.range === 'weekly') {
-            path = `/videos/period/week/page/${page}`;
-        } else if (params.range === 'monthly') {
-            path = `/videos/period/month/page/${page}`;
-        } else if (params.range === 'all') {
-            path = `/videos/period/total/page/${page}`;
+        const tag = params.tag;
+        const duration = params.duration;
+        const sortKey = params.sort;
+        const rangeKey = params.range;
+
+        if (tag && tag !== 'all') {
+            path = `/videos/tag/${tag}/page/${page}`;
+        } else if (duration && duration !== 'all') {
+            path = `/videos/duration/${duration}/page/${page}`;
+        } else if (sortKey && sortKey !== 'views' && sortKey !== 'favorite' && sortKey !== 'pv') {
+            path = `/videos/sort/${sortKey}/page/${page}`;
+        } else if (rangeKey && rangeKey !== 'all') {
+            const mappedRange = XHotVideoAdapter.RANGE_MAP[rangeKey] ?? rangeKey;
+            if (mappedRange && mappedRange !== 'total') {
+                path = `/videos/period/${mappedRange}/page/${page}`;
+            } else {
+                path = `/videos/page/${page}`;
+            }
         } else {
-            path = `/videos/page/${page}`;
+            // Check default maps (from carousel or standard filters)
+            if (sortKey === 'recent' || sortKey === 'new') {
+                path = `/videos/sort/new/page/${page}`;
+            } else if (rangeKey === 'daily' || rangeKey === 'day') {
+                path = `/videos/period/day/page/${page}`;
+            } else if (rangeKey === 'weekly' || rangeKey === 'week') {
+                path = `/videos/period/week/page/${page}`;
+            } else if (rangeKey === 'monthly' || rangeKey === 'month') {
+                path = `/videos/period/month/page/${page}`;
+            } else {
+                path = `/videos/page/${page}`;
+            }
         }
 
         const res = await runtime.http.request<string>({

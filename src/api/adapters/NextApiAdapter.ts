@@ -1,6 +1,6 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
 import { normalizeVideoUrl } from './Helper';
 
 export class NextApiAdapter implements SiteAdapter {
@@ -16,12 +16,50 @@ export class NextApiAdapter implements SiteAdapter {
 
     private static readonly METRIC_MAP: Record<string, string> = {
         favorite: 'likes',
-        pv: 'views',
-        recent: 'views'
+        pv: 'views'
     };
 
     matches(hostname: string): boolean {
         return hostname.includes('twikeep.com') || hostname.includes('twiidol.com');
+    }
+
+    getFilterGroups(isAnime: boolean): FilterGroup[] {
+        const isIdol = window.location.hostname.includes('twiidol.com');
+        return [
+            {
+                id: 'range',
+                title: '范围 Range',
+                type: 'range',
+                options: [
+                    { id: 'daily', label: '24小时', en: '24 Hours' },
+                    { id: 'weekly', label: '1周', en: '1 Week' },
+                    { id: 'monthly', label: '1个月', en: '1 Month' },
+                    { id: 'all', label: '1年', en: '1 Year' }
+                ]
+            },
+            {
+                id: 'sort',
+                title: '排序 Sort',
+                type: 'sort',
+                options: isIdol ? [
+                    { id: 'pv', label: '最多播放' },
+                    { id: 'favorite', label: '最多点赞' },
+                    { id: 'recent', label: '最新视频' }
+                ] : [
+                    { id: 'pv', label: '最多播放' },
+                    { id: 'favorite', label: '最多点赞' }
+                ]
+            }
+        ];
+    }
+
+    getHeroRanges(isAnime: boolean): HeroRange[] {
+        return [
+            { id: 'daily', label: '24小时', en: '24 Hours', icon: '⏱' },
+            { id: 'weekly', label: '周榜', en: 'Weekly', icon: '📅' },
+            { id: 'monthly', label: '月榜', en: 'Monthly', icon: '🗓' },
+            { id: 'all', label: '年榜', en: 'Yearly', icon: '🏆' }
+        ];
     }
 
     async fetchList(params: FetchParams, isAnime: boolean): Promise<FetchListResult> {

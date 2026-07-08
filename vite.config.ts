@@ -10,9 +10,9 @@ const earlyBootstrapBanner = `;(() => {
     if (
       window._cf_chl_opt ||
       document.title === 'Just a moment...' ||
+      document.title === '请稍候...' ||
       html.indexOf('_cf_chl_opt') !== -1 ||
-      html.indexOf('challenges.cloudflare.com') !== -1 ||
-      html.indexOf('cdn-cgi/challenge-platform') !== -1
+      (html.indexOf('cf-challenge') !== -1 && html.indexOf('challenge-form') !== -1)
     ) {
       console.log('X-Flow: Cloudflare challenge detected, skipping preboot banner');
       return;
@@ -55,17 +55,31 @@ export default defineConfig(({ command }) => ({
         license: 'Apache-2.0',
         match: [
           '*://x-ero-anime.com/*',
+          '*://*.x-ero-anime.com/*',
           '*://truvaze.com/*',
+          '*://*.truvaze.com/*',
           '*://twihub.net/*',
+          '*://*.twihub.net/*',
+          '*://twikeep.com/*',
           '*://*.twikeep.com/*',
+          '*://twiidol.com/*',
           '*://*.twiidol.com/*',
+          '*://twiigle.com/*',
           '*://*.twiigle.com/*',
+          '*://monsnode.com/*',
           '*://*.monsnode.com/*',
+          '*://twivideo.net/*',
           '*://*.twivideo.net/*',
+          '*://xiaohuangniao.me/*',
           '*://*.xiaohuangniao.me/*',
+          '*://twidouga.net/*',
           '*://*.twidouga.net/*',
+          '*://javtwi.com/*',
           '*://*.javtwi.com/*',
-          '*://*.xhotvideo.com/*'
+          '*://xhotvideo.com/*',
+          '*://*.xhotvideo.com/*',
+          '*://uraaka-times.com/*',
+          '*://*.uraaka-times.com/*'
         ],
         connect: [
           'x-ero-anime.com',

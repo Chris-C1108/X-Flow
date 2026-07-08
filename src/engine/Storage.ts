@@ -6,10 +6,28 @@ export const STORAGE_KEYS = {
     UNREAD_ONLY: 'xflow_unread_only',
     LOOP: 'xflow_loop',
     BOOKMARKS: 'xflow_bookmarks_v1',
+    BOOKMARKS_V2: 'xflow_bookmarks_v2',
+    DOWNLOADED: 'xflow_downloaded_v1',
     LIKES: 'xflow_likes_v1',
     VOLUME: 'xflow_volume',
     PLAYBACK_RATE: 'xflow_playback_rate',
 };
+
+export interface BookmarkItem {
+    bookmarkTime: number;         // 收藏时间
+    authorId: string;             // X博主ID (tweet_account)
+    videoUrl: string;             // 时评链接 (originalUrl)
+    tweetTitle: string;           // 推文标题 (title)
+    currentRankingSite: string;   // 当前排行榜站点
+    
+    // Additional fields for rendering and player compatibility:
+    id: string;
+    url_cd: string;
+    thumbnail: string;
+    duration: number;
+    url: string;
+    pv: number;
+}
 
 /** localStorage 读写（单域）*/
 export function loadJSON(key: string, fallback: any) { try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; } }

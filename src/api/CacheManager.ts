@@ -6,6 +6,7 @@ export interface QueryState {
     sort: string;
     category?: string;
     perPage?: number;
+    [key: string]: any;
 }
 
 export interface CacheEntry {
@@ -21,13 +22,27 @@ export class CacheManager {
     private store = new Map<string, CacheEntry>();
 
     public makeKey(q: QueryState): string {
-        return [
-            q.isAnimeOnly ? 1 : 0,
+        const parts = [
+            q.isAnimeOnly ? '1' : '0',
             q.range || 'daily',
             q.sort || 'favorite',
             q.category || '',
             q.perPage ?? 50,
-        ].join('|');
+        ];
+
+        // Safely append any extra filter parameters in alphabetical order
+        const extraKeys = Object.keys(q).filter(k => 
+            k !== 'isAnimeOnly' && k !== 'range' && k !== 'sort' && 
+            k !== 'category' && k !== 'perPage'
+        ).sort();
+
+        extraKeys.forEach(k => {
+            if (q[k] !== undefined && q[k] !== null) {
+                parts.push(`${k}:${q[k]}`);
+            }
+        });
+
+        return parts.join('|');
     }
 
     public get(q: QueryState, ttlMs: number = DEFAULT_TTL): CacheEntry | null {

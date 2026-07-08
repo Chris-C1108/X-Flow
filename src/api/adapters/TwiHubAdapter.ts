@@ -1,6 +1,6 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
 
 export class TwiHubAdapter implements SiteAdapter {
     id = 'twihub';
@@ -11,6 +11,9 @@ export class TwiHubAdapter implements SiteAdapter {
         weekly: '7d',
         monthly: '30d',
         all: '30d',
+        '1d': '1d',
+        '7d': '7d',
+        '30d': '30d',
         realtime: 'realtime'
     };
 
@@ -18,6 +21,39 @@ export class TwiHubAdapter implements SiteAdapter {
         return hostname.includes('twihub.net') || 
                hostname.includes('x-ero-anime.com') || 
                hostname.includes('truvaze.com');
+    }
+
+    getFilterGroups(isAnime: boolean): FilterGroup[] {
+        return [
+            {
+                id: 'range',
+                title: '范围 Range',
+                type: 'range',
+                options: [
+                    { id: '1d', label: '24小时', en: '24 Hours' },
+                    { id: '7d', label: '7天榜', en: '7 Days' },
+                    { id: '30d', label: '30天榜', en: '30 Days' },
+                    { id: 'realtime', label: '最新', en: 'Latest' }
+                ]
+            },
+            {
+                id: 'sort',
+                title: '排序 Sort',
+                type: 'sort',
+                options: [
+                    { id: 'pv', label: '极高播放' },
+                    { id: 'favorite', label: '最多喜欢' }
+                ]
+            }
+        ];
+    }
+
+    getHeroRanges(isAnime: boolean): HeroRange[] {
+        return [
+            { id: '1d', label: '24小时', en: '24 Hours', icon: '⏱' },
+            { id: '7d', label: '7天榜', en: '7 Days', icon: '📅' },
+            { id: '30d', label: '30天榜', en: '30 Days', icon: '🗓' }
+        ];
     }
 
     private getBaseUrl(): string {
@@ -77,6 +113,13 @@ export class TwiHubAdapter implements SiteAdapter {
                 isDetailsLoaded: false,
                 originalUrl: `https://x.com/i/status/${item.postId}`
             }));
+
+            // Client-side sorting fallback for TwiHub SvelteKit API
+            if (params.sort === 'pv') {
+                posts.sort((a, b) => b.pv - a.pv);
+            } else if (params.sort === 'favorite') {
+                posts.sort((a, b) => b.favorite - a.favorite);
+            }
 
             return {
                 posts,

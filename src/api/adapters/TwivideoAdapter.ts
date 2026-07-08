@@ -1,14 +1,44 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
 import { parseTwitterHandleFromUrl, extractText, extractAttr, normalizeVideoUrl } from './Helper';
 
 export class TwivideoAdapter implements SiteAdapter {
     id = 'twivideo';
     name = 'TwiVideo (AJAX HTML Hybrid)';
 
+    private static readonly RANGE_MAP: Record<string, string> = {
+        daily: 'realtime',
+        weekly: 'archives',
+        monthly: 'archives',
+        all: 'archives',
+        realtime: 'realtime',
+        archives: 'archives'
+    };
+
     matches(hostname: string): boolean {
         return hostname.includes('twivideo.net');
+    }
+
+    getFilterGroups(isAnime: boolean): FilterGroup[] {
+        return [
+            {
+                id: 'range',
+                title: '排行 Period',
+                type: 'range',
+                options: [
+                    { id: 'realtime', label: '实时排行', en: 'Realtime' },
+                    { id: 'archives', label: '话题排行', en: 'Archives' }
+                ]
+            }
+        ];
+    }
+
+    getHeroRanges(isAnime: boolean): HeroRange[] {
+        return [
+            { id: 'realtime', label: '实时排行', en: 'Realtime', icon: '⏱' },
+            { id: 'archives', label: '话题排行', en: 'Archives', icon: '🏆' }
+        ];
     }
 
     private viewTokenPromise: Promise<string> | null = null;
@@ -53,12 +83,16 @@ export class TwivideoAdapter implements SiteAdapter {
         const offset = params.cursor || '0';
         const limit = String(params.per_page || 80);
 
+        const rangeKey = params.range || 'daily';
+        const mappedRange = TwivideoAdapter.RANGE_MAP[rangeKey] ?? 'realtime';
+        const order = (mappedRange === 'archives' || params.sort === 'favorite') ? 'like_count' : 'post_date';
+
         const bodyParams = new URLSearchParams();
         bodyParams.append('offset', offset);
         bodyParams.append('limit', limit);
         bodyParams.append('tag', 'null');
         bodyParams.append('type', '0');
-        bodyParams.append('order', params.sort === 'favorite' ? 'like_count' : 'post_date');
+        bodyParams.append('order', order);
         bodyParams.append('le', '1000');
         bodyParams.append('ty', 'p4');
         bodyParams.append('myarray', '[]');

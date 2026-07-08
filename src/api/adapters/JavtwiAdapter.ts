@@ -1,6 +1,6 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
 import { normalizeVideoUrl } from './Helper';
 
 export class JavtwiAdapter implements SiteAdapter {
@@ -11,14 +11,38 @@ export class JavtwiAdapter implements SiteAdapter {
         return hostname.includes('javtwi.com');
     }
 
+    getFilterGroups(isAnime: boolean): FilterGroup[] {
+        return [
+            {
+                id: 'category',
+                title: '分类 Category',
+                type: 'category',
+                options: [
+                    { id: 'top', label: '推荐', en: 'Top' },
+                    { id: 'index', label: '最新', en: 'Index' },
+                    { id: 'best', label: '精品', en: 'Best' },
+                    { id: 'rank', label: '排行', en: 'Rank' },
+                    { id: 'new', label: '新品', en: 'New' }
+                ]
+            }
+        ];
+    }
+
+    getHeroRanges(isAnime: boolean): HeroRange[] {
+        return []; // Hides carousel
+    }
+
     async fetchList(params: FetchParams, isAnime: boolean): Promise<FetchListResult> {
         const runtime = getRuntimeAdapter();
         const origin = window.location.origin;
 
-        // JavTwi top ranking is at /top.html
+        const key = params.range || params.category || 'top';
+        const mapped = key === 'daily' ? 'top' : key;
+        const path = mapped.endsWith('.html') ? mapped : `/${mapped}.html`;
+
         const res = await runtime.http.request<string>({
             method: 'GET',
-            url: `${origin}/top.html`,
+            url: `${origin}${path}`,
             headers: { Accept: 'text/html' },
             responseType: 'text',
             timeoutMs: 8000,

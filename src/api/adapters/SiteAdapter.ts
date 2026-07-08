@@ -21,6 +21,27 @@ export interface FetchListResult {
     hasMore: boolean;
 }
 
+export interface FilterOption {
+    id: string;
+    label: string;
+    en?: string;
+    icon?: string;
+}
+
+export interface FilterGroup {
+    id: string; // e.g. "range" | "sort" | "category" | "duration" | "tag"
+    title: string;
+    type: 'range' | 'sort' | 'category' | 'tag';
+    options: FilterOption[];
+}
+
+export interface HeroRange {
+    id: string;
+    label: string;
+    en: string;
+    icon: string;
+}
+
 export interface SiteAdapter {
     id: string;
     name: string;
@@ -28,6 +49,10 @@ export interface SiteAdapter {
     
     // Core Fetch API
     fetchList(params: FetchParams, isAnime: boolean): Promise<FetchListResult>;
+    
+    // UI Capabilities Configuration
+    getFilterGroups?(isAnime: boolean): FilterGroup[];
+    getHeroRanges?(isAnime: boolean): HeroRange[];
     
     // Video Resolution & Lazy Details
     fetchDetailHtml?(postId: string): Promise<string>;

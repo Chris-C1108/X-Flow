@@ -1,4 +1,5 @@
 import { Sandbox } from './ui/Sandbox';
+import { initI18n } from './utils/i18n';
 
 /**
  * X-Flow 页面接管 — 三层防御策略
@@ -45,9 +46,9 @@ if (_hasInitFlag && _appHealthy) {
     const _html = document.documentElement ? document.documentElement.innerHTML : '';
     const _isCf = (window as any)._cf_chl_opt || 
                   document.title === 'Just a moment...' || 
+                  document.title === '请稍候...' ||
                   _html.indexOf('_cf_chl_opt') !== -1 || 
-                  _html.indexOf('challenges.cloudflare.com') !== -1 ||
-                  _html.indexOf('cdn-cgi/challenge-platform') !== -1;
+                  (_html.indexOf('cf-challenge') !== -1 && _html.indexOf('challenge-form') !== -1);
 
     if (_isCf) {
         console.warn('X-Flow: Cloudflare challenge page detected, aborting takeover.');
@@ -147,13 +148,13 @@ document.write([
         "default-src 'self' 'unsafe-inline' data: blob:; " +
         "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
         "frame-src 'none'; " +
-        "connect-src 'self' https://video.twimg.com https://pbs.twimg.com https://fonts.googleapis.com https://fonts.gstatic.com https://xflow-telemetry.chen-m1108.workers.dev https://telemetry.x-flow.ccwu.cc https://x-flow.ccwu.cc; " +
-        "img-src 'self' https://pbs.twimg.com data: blob:; " +
-        "media-src 'self' https://video.twimg.com blob:; " +
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+        `connect-src 'self' ${window.location.origin} https://video.twimg.com https://pbs.twimg.com https://fonts.googleapis.com https://fonts.gstatic.com https://xflow-telemetry.chen-m1108.workers.dev https://telemetry.x-flow.ccwu.cc https://x-flow.ccwu.cc; ` +
+        `img-src 'self' ${window.location.origin} https://pbs.twimg.com data: blob:; ` +
+        `media-src 'self' ${window.location.origin} https://video.twimg.com blob:; ` +
+        `style-src 'self' 'unsafe-inline' ${window.location.origin} https://fonts.googleapis.com; ` +
         "font-src 'self' https://fonts.gstatic.com; " +
         "object-src 'none'; " +
-        "base-uri 'self';" +
+        `base-uri 'self' ${window.location.origin};` +
     '">',
     '<title>X-Flow</title>',
     '</head>',
@@ -264,6 +265,7 @@ let _xflowInitStartedAt = Date.now();
 
 const _bootSandbox = (instance: Sandbox) => {
     _xflowInitStartedAt = Date.now();
+    initI18n();
 
     void instance.initialize()
         .then(() => {
@@ -328,12 +330,12 @@ const _verifyAndRecover = () => {
         csp.content = "default-src 'self' 'unsafe-inline' data: blob:; " +
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
             "frame-src 'none'; " +
-            "connect-src 'self' https://video.twimg.com https://pbs.twimg.com https://fonts.googleapis.com https://fonts.gstatic.com https://xflow-telemetry.chen-m1108.workers.dev https://telemetry.x-flow.ccwu.cc https://x-flow.ccwu.cc; " +
-            "img-src 'self' https://pbs.twimg.com data: blob:; " +
-            "media-src 'self' https://video.twimg.com blob:; " +
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+            `connect-src 'self' ${window.location.origin} https://video.twimg.com https://pbs.twimg.com https://fonts.googleapis.com https://fonts.gstatic.com https://xflow-telemetry.chen-m1108.workers.dev https://telemetry.x-flow.ccwu.cc https://x-flow.ccwu.cc; ` +
+            `img-src 'self' ${window.location.origin} https://pbs.twimg.com data: blob:; ` +
+            `media-src 'self' ${window.location.origin} https://video.twimg.com blob:; ` +
+            `style-src 'self' 'unsafe-inline' ${window.location.origin} https://fonts.googleapis.com; ` +
             "font-src 'self' https://fonts.gstatic.com; " +
-            "object-src 'none'; base-uri 'self';";
+            `object-src 'none'; base-uri 'self' ${window.location.origin};`;
         document.head.appendChild(csp);
     }
 

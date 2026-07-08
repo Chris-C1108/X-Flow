@@ -1,27 +1,66 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
 import { parseTwitterHandleFromUrl, normalizeVideoUrl } from './Helper';
 
 export class TwiigleAdapter implements SiteAdapter {
     id = 'twiigle';
     name = 'Twiigle (HTML Scraper)';
 
+    private static readonly RANGE_MAP: Record<string, string> = {
+        daily: 'index',
+        weekly: '1w',
+        monthly: '3d',
+        all: 'best'
+    };
+
     matches(hostname: string): boolean {
         return hostname.includes('twiigle.com');
+    }
+
+    getFilterGroups(isAnime: boolean): FilterGroup[] {
+        return [
+            {
+                id: 'category',
+                title: '分类 Category',
+                type: 'category',
+                options: [
+                    { id: 'index', label: '24小时', en: '24 Hours' },
+                    { id: '1w', label: '周榜', en: 'Weekly' },
+                    { id: 'realtime', label: '实时', en: 'Realtime' },
+                    { id: 'realtime2', label: '随机', en: 'Random' },
+                    { id: 'popular', label: 'AV1', en: 'AV1' },
+                    { id: 'trend', label: 'AV2', en: 'AV2' },
+                    { id: 'new', label: '角色扮演', en: 'Cosplay' },
+                    { id: 'best', label: '明星', en: 'Talent' },
+                    { id: 'amature', label: '写真', en: 'Gravure' },
+                    { id: 'hot', label: '里站', en: 'Underground' },
+                    { id: 'secret', label: 'TikTok', en: 'TikTok' },
+                    { id: '3d', label: '殿堂', en: 'Hall of Fame' },
+                    { id: 'fera', label: '深喉', en: 'Blowjob' },
+                    { id: 'ona', label: '自我满足', en: 'Masturbation' },
+                    { id: 'ama', label: '素人', en: 'Amateur' },
+                    { id: 'op', label: '私处', en: 'Genitals' }
+                ]
+            }
+        ];
+    }
+
+    getHeroRanges(isAnime: boolean): HeroRange[] {
+        return [
+            { id: 'index', label: '24小时', en: '24 Hours', icon: '⏱' },
+            { id: '1w', label: '周榜', en: 'Weekly', icon: '📅' },
+            { id: '3d', label: '殿堂', en: 'Hall of Fame', icon: '🏆' }
+        ];
     }
 
     async fetchList(params: FetchParams, isAnime: boolean): Promise<FetchListResult> {
         const runtime = getRuntimeAdapter();
         const origin = window.location.origin;
 
-        // Twiigle has static category pages
-        let path = '/index.html';
-        if (params.range === 'weekly') {
-            path = '/1w.html';
-        } else if (params.range === 'realtime') {
-            path = '/realtime.html';
-        }
+        const key = params.range || params.category || 'index';
+        const mapped = TwiigleAdapter.RANGE_MAP[key] ?? key;
+        const path = mapped.endsWith('.html') ? mapped : `/${mapped}.html`;
 
         const res = await runtime.http.request<string>({
             method: 'GET',

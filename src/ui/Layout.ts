@@ -1,8 +1,12 @@
 import { PoolManager } from '../api/PoolManager';
 import { QueryState } from '../api/CacheManager';
-import { Components } from './Components';
+import { Components, DEFAULT_FILTER_GROUPS, getGroupTitle } from './Components';
+import { AdapterManager } from '../api/adapters/AdapterManager';
 import { formatCount, escapeHtml } from '../utils/Format';
 import { log } from '../utils/Logger';
+import { t, tLabel, setLang, LangCode } from '../utils/i18n';
+import { loadGM, saveGM, STORAGE_KEYS, BookmarkItem } from '../engine/Storage';
+import { showConfirmModal } from '../utils/Dom';
 
 function escapeCSSUrl(url: string) {
     return url.replace(/["'\\]/g, '\\$&');
@@ -17,21 +21,18 @@ export class Layout {
     private pool: PoolManager;
     private rootElement: HTMLElement | null = null;
     private player: TikTokMode;
-    private heroCarouselPos: number = 1;
+    private hoverVideo: HTMLVideoElement | null = null;
+    private hoverCard: HTMLElement | null = null;
 
-    /** Hero carousel: top-3 data per range */
-    private heroData: Map<string, any[]> = new Map();
-    /** Current sub-index (0/1/2) displayed within each hero card */
-    private heroSubIndex: Map<string, number> = new Map();
-    /** Auto-loop timers per range */
-    private heroTimers: Map<string, ReturnType<typeof setInterval>> = new Map();
-    /** Ranges used by hero carousel */
-    private static readonly HERO_RANGES = [
-        { id: 'daily', label: '日榜' },
-        { id: 'weekly', label: '周榜' },
-        { id: 'monthly', label: '月榜' },
-        { id: 'all', label: '总榜' },
-    ];
+    private isBookmarksView = false;
+    private bookmarkFilterSite = 'all';
+    private bookmarkSort = 'recent';
+    private bookmarkIncludeDownloaded = true;
+
+    private getActiveFilters(): any[] {
+        const adapter = AdapterManager.getInstance().getActiveAdapter();
+        return adapter.getFilterGroups ? adapter.getFilterGroups(this.pool.getApiClient().getIsAnime()) : [];
+    }
 
     constructor() {
         this.pool = new PoolManager();
@@ -40,28 +41,92 @@ export class Layout {
 
     public init(root: HTMLElement) {
         this.rootElement = root;
-        document.body.className = this.pool.getApiClient().getIsAnime() ? 'theme-anime' : 'theme-real';
+        if (this.rootElement) {
+            this.rootElement.className = this.pool.getApiClient().getIsAnime() ? 'theme-anime' : 'theme-real';
+        }
         this.createPageStructure();
         this.bindEvents();
         this.player.init();
-        this.player.onClose(() => this.resumeHeroVideos());
-        this.bindCarouselEvents();
+        this.player.onClose(() => {
+            if (this.isBookmarksView) {
+                this.loadBookmarksData();
+            } else {
+                this.playNo1AutoVideo();
+            }
+        });
+        this.player.onLibraryClick(() => {
+            this.switchToBookmarksView();
+        });
+        this.bindDetailLoaderListener();
         this.loadInitialData();
-        this.loadHeroCarousel();
+    }
+
+    private bindDetailLoaderListener() {
+        this.pool.onDetailLoaded((item) => {
+            const grid = document.getElementById('grid-container');
+            if (!grid) return;
+            const cards = grid.querySelectorAll('.media-card');
+            for (const card of cards) {
+                const indexAttr = card.getAttribute('data-index');
+                if (!indexAttr) continue;
+                const index = parseInt(indexAttr);
+                const poolItem = this.isBookmarksView 
+                    ? this.pool.getCustomDataPool()?.[index] 
+                    : this.pool.getDataPool()[index];
+                if (poolItem && poolItem.id === item.id) {
+                    if (item.url) {
+                        card.setAttribute('data-video-url', item.url);
+                    }
+                    const authorEl = card.querySelector('.card-author');
+                    if (authorEl) {
+                        authorEl.textContent = this.getCleanBloggerName(item.authorDisplayName || item.tweet_account || '');
+                    }
+                    let titleEl = card.querySelector('.card-title');
+                    if (!titleEl && item.title) {
+                        titleEl = document.createElement('div');
+                        titleEl.className = 'card-title';
+                        const infoEl = card.querySelector('.card-info');
+                        if (infoEl) {
+                            const statsEl = infoEl.querySelector('.card-stats');
+                            if (statsEl) {
+                                infoEl.insertBefore(titleEl, statsEl);
+                            } else {
+                                infoEl.appendChild(titleEl);
+                            }
+                        }
+                    }
+                    if (titleEl && item.title) {
+                        titleEl.textContent = item.title;
+                    }
+                    break;
+                }
+            }
+        });
     }
 
     private createPageStructure() {
         if (!this.rootElement) return;
 
+        const filters = this.getActiveFilters();
+        const activeParams = this.pool.getCurrentQuery();
+
         this.rootElement.innerHTML = `
             <div class="noise-overlay"></div>
             <div class="app-layout">
-                ${Components.getSidebarHTML()}
+                ${Components.getSidebarHTML(filters, activeParams, this.isBookmarksView)}
                 <main class="main-container" id="main-scroll">
-                    ${Components.getTopBarHTML(this.pool.getApiClient().getIsAnime())}
+                    ${Components.getTopBarHTML(this.pool.getApiClient().getIsAnime(), filters, activeParams)}
                     <div class="content-pad">
-                        ${Components.getHeroCarouselHTML()}
-                        <h2 class="section-title" id="section-title">趋势探索 <span style="font-size:1rem; color:var(--text-400); font-family:var(--font-body)">Trending Now</span></h2>
+                        <div class="filter-section-container">
+                            <div class="filter-header-row">
+                                <h2 class="section-title" id="section-title"></h2>
+                                <button type="button" class="filter-toggle-btn" id="filter-toggle-btn" aria-label="Toggle Filters" style="display: ${filters.length > 2 ? 'inline-flex' : 'none'};">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M10 18v-6L3 5V3h18v2l-7 7v6l-4 2z"/></svg>
+                                    <span>${t('filter')}</span>
+                                </button>
+                            </div>
+                            <div class="filter-expand-panel hidden" id="filter-expand-panel"></div>
+                        </div>
                         <div class="media-grid" id="grid-container">
                             ${this.generateSkeletons()}
                         </div>
@@ -69,12 +134,139 @@ export class Layout {
                 </main>
             </div>
         `;
+
+        this.renderFilterPanel();
+        this.updateSectionTitle();
+
+        // Hide filter toggle button if there are no filters
+        const toggleBtn = document.getElementById('filter-toggle-btn');
+        if (toggleBtn) {
+            if (filters.length === 0) {
+                toggleBtn.style.display = 'none';
+            } else {
+                toggleBtn.style.display = '';
+            }
+        }
+    }
+
+    private renderFilterPanel() {
+        const panel = document.getElementById('filter-expand-panel');
+        if (!panel) return;
+
+        if (this.isBookmarksView) {
+            const sites = [
+                { id: 'all', label: '全部' },
+                { id: 'twihub', label: 'TwiHub' },
+                { id: 'twikeep', label: 'TwiKeep' },
+                { id: 'twiidol', label: 'TwiIdol' },
+                { id: 'twiigle', label: 'Twiigle' },
+                { id: 'monsnode', label: 'Monsnode' },
+                { id: 'twivideo', label: 'TwiVideo' },
+                { id: 'twidouga', label: 'TwiDouga' },
+                { id: 'javtwi', label: 'JavTwi' },
+                { id: 'xhotvideo', label: 'XHotVideo' }
+            ];
+            
+            const sitesHtml = sites.map(opt => {
+                const isActive = opt.id === this.bookmarkFilterSite;
+                return `<button type="button" class="filter-option-btn ${isActive ? 'active' : ''}" data-bookmark-site="${opt.id}">${opt.label}</button>`;
+            }).join('');
+
+            const sorts = [
+                { id: 'recent', label: '最近收藏' },
+                { id: 'oldest', label: '最早收藏' },
+                { id: 'views', label: '播放最多' },
+                { id: 'duration', label: '时长最长' }
+            ];
+
+            const sortsHtml = sorts.map(opt => {
+                const isActive = opt.id === this.bookmarkSort;
+                return `<button type="button" class="filter-option-btn ${isActive ? 'active' : ''}" data-bookmark-sort="${opt.id}">${opt.label}</button>`;
+            }).join('');
+
+            panel.innerHTML = `
+                <div class="filter-rows-container">
+                    <div class="filter-row">
+                        <div class="filter-row-title">${t('filter_category')}</div>
+                        <div class="filter-row-options">
+                            ${sitesHtml}
+                        </div>
+                    </div>
+                    <div class="filter-row">
+                        <div class="filter-row-title">${t('filter_sort')}</div>
+                        <div class="filter-row-options">
+                            ${sortsHtml}
+                        </div>
+                    </div>
+                    <div class="filter-row">
+                        <div class="filter-row-title">批量操作</div>
+                        <div class="filter-row-options" style="align-items: center; gap: 16px;">
+                            <label class="bookmark-chk-label" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; color: var(--text-300);">
+                                <input type="checkbox" id="bookmark-include-downloaded-chk" ${this.bookmarkIncludeDownloaded ? 'checked' : ''} style="accent-color: var(--theme-accent); width: 14px; height: 14px; cursor: pointer;">
+                                ${t('includeDownloaded')}
+                            </label>
+                            <button type="button" class="bookmark-copy-btn" id="bookmark-select-all-btn" style="display: inline-flex; align-items: center; gap: 6px; background: var(--theme-accent-subtle) !important; border: 1px solid var(--theme-accent) !important; border-radius: 999px !important; padding: 6px 14px; font-size: 12px; font-weight: 600; color: var(--theme-accent) !important; cursor: pointer; font-family: var(--font-body); outline: none !important; transition: background 0.2s, color 0.2s;">
+                                全选
+                            </button>
+                            <button type="button" class="bookmark-copy-btn" id="bookmark-copy-links-btn" style="display: none; align-items: center; gap: 6px; background: var(--theme-accent-subtle) !important; border: 1px solid var(--theme-accent) !important; border-radius: 999px !important; padding: 6px 14px; font-size: 12px; font-weight: 600; color: var(--theme-accent) !important; cursor: pointer; font-family: var(--font-body); outline: none !important; transition: background 0.2s, color 0.2s;">
+                                ${t('copyLinks')}
+                            </button>
+                            <button type="button" class="bookmark-copy-btn" id="bookmark-cancel-select-btn" style="display: none; align-items: center; gap: 6px; background: rgba(255,255,255,0.08) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 999px !important; padding: 6px 14px; font-size: 12px; font-weight: 600; color: var(--text-200) !important; cursor: pointer; font-family: var(--font-body); outline: none !important; transition: background 0.2s, color 0.2s;">
+                                取消
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            const btn = document.getElementById('filter-toggle-btn');
+            if (btn) btn.style.display = 'inline-flex';
+            return;
+        }
+
+        const filters = this.getActiveFilters();
+        const activeParams = this.pool.getCurrentQuery();
+        
+        // Dynamic filter rows (Group 2+)
+        const extraGroups = filters.slice(2);
+        if (extraGroups.length === 0) {
+            const btn = document.getElementById('filter-toggle-btn');
+            if (btn) btn.style.display = 'none';
+            panel.innerHTML = '';
+            return;
+        } else {
+            const btn = document.getElementById('filter-toggle-btn');
+            if (btn) btn.style.display = 'inline-flex';
+        }
+
+        const rowsHtml = extraGroups.map(group => {
+            const activeId = activeParams[group.id] || group.options[0]?.id;
+            const optionsHtml = group.options.map(opt => {
+                const isActive = opt.id === activeId;
+                return `<button type="button" class="filter-option-btn ${isActive ? 'active' : ''}" data-filter-group="${group.id}" data-filter-value="${opt.id}">${tLabel(opt.label)}</button>`;
+            }).join('');
+
+            return `
+                <div class="filter-row">
+                    <div class="filter-row-title">${getGroupTitle(group)}</div>
+                    <div class="filter-row-options">
+                        ${optionsHtml}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        panel.innerHTML = `
+            <div class="filter-rows-container">
+                ${rowsHtml}
+            </div>
+        `;
     }
 
     private generateSkeletons() {
         return Array(6).fill(0).map(() => `
             <div class="media-card" style="border-radius: 1.5rem; cursor: default; animation: none; background: transparent; border: none;">
-                <div class="skeleton-pulse" style="width: 100%; height: 100%; background: rgba(255,255,255,0.05); aspect-ratio: 9/16; border-radius: 1.5rem;"></div>
+                <div class="skeleton-pulse"></div>
             </div>
         `).join('');
     }
@@ -86,6 +278,18 @@ export class Layout {
      * 缓存命中则秒开，否则展示 skeleton loading。
      */
     private async applyFilters(partial: Partial<QueryState>, opts?: { channelSwitch?: boolean }) {
+        this.pool.stopPrefetching();
+        if (this.isBookmarksView) {
+            if (partial.bookmarkSite !== undefined) {
+                this.bookmarkFilterSite = partial.bookmarkSite;
+            }
+            if (partial.bookmarkSort !== undefined) {
+                this.bookmarkSort = partial.bookmarkSort;
+            }
+            this.loadBookmarksData();
+            return;
+        }
+
         const willHitCache = this.pool.hasFreshCache(partial);
 
         if (!willHitCache) {
@@ -93,13 +297,21 @@ export class Layout {
             if (grid) grid.innerHTML = this.generateSkeletons();
         }
 
-        // Channel switch: update theme
+        // Channel switch: update theme & recreate structure
         if (opts?.channelSwitch && partial.isAnimeOnly !== undefined) {
-            document.body.className = partial.isAnimeOnly ? 'theme-anime' : 'theme-real';
+            if (this.rootElement) {
+                this.rootElement.className = partial.isAnimeOnly ? 'theme-anime' : 'theme-real';
+            }
+            this.createPageStructure();
+            this.bindEvents();
         }
 
         try {
             const result = await this.pool.loadInitialData(partial);
+            
+            // Sync UI active indicators to match actual query parameters after loading
+            this.syncFiltersUI(this.pool.getCurrentQuery());
+
             if (this.pool.getDataPool().length === 0) {
                 this.renderEmptyState();
             } else {
@@ -122,8 +334,10 @@ export class Layout {
         const q = this.pool.getCurrentQuery();
 
         // 1. Same channel, same sort, next likely ranges
-        const ranges = ['daily', 'weekly', 'monthly', 'all'];
-        const nextRange = ranges.find(r => r !== q.range) || 'weekly';
+        const filters = this.getActiveFilters();
+        const rangeGroup = filters.find(g => g.type === 'range' || g.id === 'range' || g.id === 'category');
+        const ranges = rangeGroup ? rangeGroup.options.map((o: any) => o.id) : ['daily', 'weekly', 'monthly', 'all'];
+        const nextRange = ranges.find((r: string) => r !== q.range) || ranges[0] || 'weekly';
 
         // 2. Other channel, same range + sort
         const otherChannel: QueryState = {
@@ -157,26 +371,8 @@ export class Layout {
             if (!appLayout) return;
             const collapsed = appLayout.classList.toggle('sidebar-collapsed');
             sidebarToggleBtn.setAttribute('aria-expanded', (!collapsed).toString());
-            sidebarToggleBtn.setAttribute('aria-label', collapsed ? '展开侧边栏' : '收起侧边栏');
-            sidebarToggleBtn.setAttribute('title', collapsed ? '展开侧边栏' : '收起侧边栏');
-        });
-
-        // Desktop sidebar range buttons
-        document.querySelectorAll('.nav-item[data-range]').forEach(item => {
-            item.addEventListener('click', async () => {
-                const range = (item as HTMLElement).dataset.range;
-                this.syncRangeUI(range!);
-                await this.applyFilters({ range });
-            });
-        });
-
-        // Desktop sort buttons
-        document.querySelectorAll('.sort-btn[data-sort]').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const sort = (btn as HTMLElement).dataset.sort;
-                this.syncSortUI(sort!);
-                await this.applyFilters({ sort });
-            });
+            sidebarToggleBtn.setAttribute('aria-label', collapsed ? t('expandSidebar') : t('collapseSidebar'));
+            sidebarToggleBtn.setAttribute('title', collapsed ? t('expandSidebar') : t('collapseSidebar'));
         });
 
         // Mobile dropdown toggles and Site Switcher
@@ -185,22 +381,58 @@ export class Layout {
         const sortBtn2 = document.getElementById('mobile-sort-btn');
         const sortDropdown = document.getElementById('sort-dropdown');
         
-        const siteSwitchWrap = document.getElementById('site-switch-wrap');
-        const siteSwitchBtn = document.getElementById('site-switch-btn');
-
-        const closeAllDropdowns = () => {
-            [rangeDropdown, sortDropdown].forEach(dd => dd?.classList.remove('open'));
-            [rangeBtn, sortBtn2].forEach(btn => btn?.setAttribute('aria-expanded', 'false'));
-            siteSwitchWrap?.classList.remove('active');
+        const closeAllDropdowns = (options?: { excludeRange?: boolean }) => {
+            if (!options?.excludeRange) {
+                rangeDropdown?.classList.remove('open');
+                rangeBtn?.setAttribute('aria-expanded', 'false');
+            }
+            sortDropdown?.classList.remove('open');
+            sortBtn2?.setAttribute('aria-expanded', 'false');
+            document.querySelectorAll('.site-switch-wrap').forEach(w => w.classList.remove('active'));
+            document.querySelectorAll('.filter-dd-wrap').forEach(d => d.classList.remove('active'));
         };
 
-        siteSwitchBtn?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const isActive = siteSwitchWrap?.classList.contains('active');
-            closeAllDropdowns();
-            if (!isActive) {
-                siteSwitchWrap?.classList.add('active');
-            }
+        // Bind all Site Switchers (Desktop topbar & Mobile dropdown menu)
+        const siteSwitchWraps = document.querySelectorAll('.site-switch-wrap:not(.lang-switch-wrap)');
+        siteSwitchWraps.forEach(wrap => {
+            const btn = wrap.querySelector('.site-switch-btn');
+            btn?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isActive = wrap.classList.contains('active');
+                closeAllDropdowns({ excludeRange: true });
+                if (!isActive) {
+                    wrap.classList.add('active');
+                }
+            });
+        });
+
+        // Bind all Language Switchers (Desktop topbar & Mobile dropdown menu)
+        const langSwitchWraps = document.querySelectorAll('.lang-switch-wrap');
+        langSwitchWraps.forEach(wrap => {
+            const btn = wrap.querySelector('.site-switch-btn');
+            btn?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isActive = wrap.classList.contains('active');
+                closeAllDropdowns({ excludeRange: true });
+                if (!isActive) {
+                    wrap.classList.add('active');
+                }
+            });
+
+            wrap.addEventListener('click', (e) => {
+                const langBtn = (e.target as HTMLElement).closest('[data-lang]') as HTMLElement | null;
+                if (langBtn) {
+                    e.stopPropagation();
+                    const selectedLang = langBtn.dataset.lang as LangCode;
+                    if (selectedLang) {
+                        setLang(selectedLang);
+                        this.createPageStructure();
+                        this.bindEvents();
+                        this.player.retranslateUI();
+                        this.renderAll();
+                    }
+                }
+            });
         });
 
         rangeBtn?.addEventListener('click', (e) => {
@@ -225,67 +457,179 @@ export class Layout {
 
         document.addEventListener('click', () => closeAllDropdowns());
 
-        // Mobile range items
-        document.querySelectorAll('#range-dropdown .mobile-dd-item').forEach(item => {
-            item.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const range = (item as HTMLElement).dataset.range;
-                this.syncRangeUI(range!);
-                closeAllDropdowns();
-                await this.applyFilters({ range });
-            });
+        // Toggle dynamic filter panel next to section-title
+        const filterToggleBtn = document.getElementById('filter-toggle-btn');
+        const filterExpandPanel = document.getElementById('filter-expand-panel');
+        filterToggleBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = !filterExpandPanel?.classList.toggle('hidden');
+            filterToggleBtn.classList.toggle('active', isOpen);
         });
 
-        // Mobile sort items
-        document.querySelectorAll('#sort-dropdown .mobile-dd-item').forEach(item => {
-            item.addEventListener('click', async (e) => {
+        // Dynamic Filter clicks (Sidebar, Topbar sort, Extra dropdowns list, Mobile dropdown list)
+        document.addEventListener('click', async (e) => {
+            const target = e.target as HTMLElement;
+
+            // Bookmark site filter click
+            const bSiteBtn = target.closest('[data-bookmark-site]') as HTMLElement | null;
+            if (bSiteBtn) {
                 e.stopPropagation();
-                const sort = (item as HTMLElement).dataset.sort;
-                this.syncSortUI(sort!);
+                const site = bSiteBtn.dataset.bookmarkSite!;
+                await this.applyFilters({ bookmarkSite: site });
+                return;
+            }
+
+            // Bookmark sort click
+            const bSortBtn = target.closest('[data-bookmark-sort]') as HTMLElement | null;
+            if (bSortBtn) {
+                e.stopPropagation();
+                const sort = bSortBtn.dataset.bookmarkSort!;
+                await this.applyFilters({ bookmarkSort: sort });
+                return;
+            }
+
+            const filterItem = target.closest('[data-filter-group][data-filter-value]') as HTMLElement | null;
+            if (filterItem) {
+                e.stopPropagation();
+                const groupId = filterItem.dataset.filterGroup!;
+                const value = filterItem.dataset.filterValue!;
+                
+                // If in bookmarks view and switching to a standard range category, exit bookmarks!
+                if (this.isBookmarksView && groupId === 'range') {
+                    this.isBookmarksView = false;
+                    this.pool.clearCustomDataPool();
+                    this.createPageStructure();
+                    this.bindEvents();
+                }
+
                 closeAllDropdowns();
-                await this.applyFilters({ sort });
-            });
+                
+                const currentQuery = this.pool.getCurrentQuery();
+                const update = { [groupId]: value };
+                this.syncFiltersUI(Object.assign({}, currentQuery, update));
+                
+                await this.applyFilters(update);
+            }
         });
 
-        // Channel switch (次元切换)
-        document.querySelectorAll('.channel-btn[data-channel]').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const channel = (btn as HTMLElement).dataset.channel;
-                const isAnime = channel === 'anime';
-                if (isAnime === this.pool.getApiClient().getIsAnime()) return;
+        // Bookmark Library Button click (My Library)
+        const myBookmarksBtn = document.getElementById('my-bookmarks-btn');
+        myBookmarksBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.switchToBookmarksView();
+        });
 
-                // Trigger pulse
-                const topbarPulse = document.getElementById('topbar-pulse');
-                if (topbarPulse) {
-                    topbarPulse.classList.remove('pulse-anim');
-                    void topbarPulse.offsetWidth;
-                    topbarPulse.classList.add('pulse-anim');
-                }
+        // Bookmark Include Downloaded Checkbox change
+        document.addEventListener('change', (e) => {
+            const chk = e.target as HTMLInputElement;
+            if (chk.id === 'bookmark-include-downloaded-chk') {
+                this.bookmarkIncludeDownloaded = chk.checked;
+                // Reload bookmarks data to apply checkbox filtering/display updates
+                this.loadBookmarksData();
+            }
+        });
 
-                // Update Switcher UI
-                const switcher = btn.closest('.channel-switch');
-                if (switcher) {
-                    if (isAnime) switcher.classList.add('is-anime');
-                    else switcher.classList.remove('is-anime');
-                }
-
-                document.querySelectorAll('.channel-btn').forEach(b => {
-                    b.classList.remove('active');
-                    b.setAttribute('aria-selected', 'false');
+        // Bookmark Select All / Copy / Cancel flow
+        document.addEventListener('click', async (e) => {
+            const selectAllBtn = (e.target as HTMLElement).closest('#bookmark-select-all-btn') as HTMLButtonElement | null;
+            if (selectAllBtn) {
+                e.stopPropagation();
+                // Show checkboxes on all bookmark cards
+                document.querySelectorAll('.media-card').forEach(card => {
+                    let chk = card.querySelector('.bookmark-select-chk') as HTMLInputElement;
+                    if (!chk) {
+                        chk = document.createElement('input');
+                        chk.type = 'checkbox';
+                        chk.className = 'bookmark-select-chk';
+                        chk.checked = true;
+                        chk.style.cssText = 'position:absolute;top:12px;left:12px;z-index:7;width:18px;height:18px;accent-color:var(--theme-accent);cursor:pointer;';
+                        card.appendChild(chk);
+                    } else {
+                        chk.checked = true;
+                        chk.style.display = 'block';
+                    }
                 });
-                btn.classList.add('active');
-                btn.setAttribute('aria-selected', 'true');
+                selectAllBtn.style.display = 'none';
+                const copyBtn = document.getElementById('bookmark-copy-links-btn');
+                const cancelBtn = document.getElementById('bookmark-cancel-select-btn');
+                if (copyBtn) copyBtn.style.display = 'inline-flex';
+                if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+                return;
+            }
 
-                // Sink old cards animation (only if not cached for instant feel)
-                const willHitCache = this.pool.hasFreshCache({ isAnimeOnly: isAnime });
-                if (!willHitCache) {
-                    const cards = document.querySelectorAll('.media-card');
-                    cards.forEach(c => c.classList.add('sinking'));
-                    await new Promise(res => setTimeout(res, 300));
+            const cancelBtn = (e.target as HTMLElement).closest('#bookmark-cancel-select-btn') as HTMLButtonElement | null;
+            if (cancelBtn) {
+                e.stopPropagation();
+                document.querySelectorAll('.bookmark-select-chk').forEach(chk => (chk as HTMLElement).style.display = 'none');
+                cancelBtn.style.display = 'none';
+                const copyBtn = document.getElementById('bookmark-copy-links-btn');
+                const selAllBtn = document.getElementById('bookmark-select-all-btn');
+                if (copyBtn) copyBtn.style.display = 'none';
+                if (selAllBtn) selAllBtn.style.display = 'inline-flex';
+                return;
+            }
+
+            const copyBtn = (e.target as HTMLElement).closest('#bookmark-copy-links-btn') as HTMLButtonElement | null;
+            if (copyBtn) {
+                e.stopPropagation();
+                
+                // Gather selected video IDs
+                const selectedIds = new Set<string>();
+                document.querySelectorAll('.media-card').forEach(card => {
+                    const chk = card.querySelector('.bookmark-select-chk') as HTMLInputElement;
+                    if (chk && chk.checked) {
+                        const idx = card.getAttribute('data-index');
+                        if (idx !== null) selectedIds.add(idx);
+                    }
+                });
+
+                const list = this.pool.getDataPool();
+                const links: string[] = [];
+                const copiedIds: string[] = [];
+                selectedIds.forEach(idxStr => {
+                    const item = list[parseInt(idxStr)];
+                    if (item) {
+                        const link = item.originalUrl || item.url || '';
+                        if (link) links.push(link);
+                        copiedIds.push(item.id);
+                    }
+                });
+
+                if (links.length === 0) return;
+
+                const linksText = links.join('\n');
+                try {
+                    await navigator.clipboard.writeText(linksText);
+                    
+                    const originalText = copyBtn.textContent;
+                    copyBtn.textContent = t('copied');
+                    copyBtn.style.setProperty('background', 'rgba(46, 213, 115, 0.15)', 'important');
+                    copyBtn.style.setProperty('border-color', '#2ed573', 'important');
+                    copyBtn.style.setProperty('color', '#2ed573', 'important');
+
+                    setTimeout(() => {
+                        copyBtn.textContent = originalText;
+                        copyBtn.style.removeProperty('background');
+                        copyBtn.style.removeProperty('border-color');
+                        copyBtn.style.removeProperty('color');
+                    }, 1500);
+
+                    // Ask user to mark as downloaded
+                    showConfirmModal(
+                        '标记已下载',
+                        `已复制 ${links.length} 个视频链接。是否将这些视频标记为已下载？`,
+                        () => {
+                            const downloaded = new Set(loadGM(STORAGE_KEYS.DOWNLOADED, []) as string[]);
+                            copiedIds.forEach(id => downloaded.add(id));
+                            saveGM(STORAGE_KEYS.DOWNLOADED, Array.from(downloaded));
+                            // Refresh UI to show badges
+                            this.loadBookmarksData();
+                        }
+                    );
+                } catch (err) {
+                    console.error('Failed to copy links:', err);
                 }
-
-                await this.applyFilters({ isAnimeOnly: isAnime }, { channelSwitch: true });
-            });
+            }
         });
 
         // Infinite scroll
@@ -318,42 +662,63 @@ export class Layout {
             gridContainer.addEventListener('click', (e) => {
                 const card = (e.target as HTMLElement).closest('.media-card') as HTMLElement | null;
                 if (card) {
+                    // Check if bookmark selection checkbox is visible
+                    const chk = card.querySelector('.bookmark-select-chk') as HTMLInputElement | null;
+                    if (chk && chk.style.display !== 'none') {
+                        if (e.target !== chk) {
+                            chk.checked = !chk.checked;
+                        }
+                        return; // Do not open player
+                    }
+
                     const indexAttr = card.getAttribute('data-index');
                     if (indexAttr) {
-                        clearHoverVideo();
-                        this.pauseAllHeroVideos(true);
                         const index = parseInt(indexAttr);
-                        this.player.openModal(index);
+                        let startTime = 0;
+                        if (index === 0 && this.hoverCard === card && this.hoverVideo) {
+                            startTime = this.hoverVideo.currentTime;
+                        }
+                        this.clearActiveHoverVideo();
+                        this.player.openModal(index, startTime);
                     }
                 }
             });
 
+
             // ── Hover-to-play ─────────────────────────────────────────
-            let hoverVideo: HTMLVideoElement | null = null;
-            let hoverCard: HTMLElement | null = null;
-
-            const clearHoverVideo = () => {
-                if (hoverVideo) {
-                    hoverVideo.pause();
-                    hoverVideo.remove();
-                    hoverVideo = null;
-                }
-                if (hoverCard) {
-                    hoverCard.classList.remove('hover-playing');
-                    hoverCard = null;
-                }
-            };
-
-            gridContainer.addEventListener('mouseenter', (e) => {
+            gridContainer.addEventListener('mouseenter', async (e) => {
                 const card = (e.target as HTMLElement).closest('.media-card') as HTMLElement | null;
-                if (!card || card === hoverCard) return;
-                clearHoverVideo();
+                if (!card || card === this.hoverCard) return;
+                this.clearActiveHoverVideo();
 
-                const videoUrl = card.dataset.videoUrl;
-                if (!videoUrl) return;
+                const indexAttr = card.getAttribute('data-index');
+                if (!indexAttr) return;
+                const index = parseInt(indexAttr);
+                const item = this.isBookmarksView 
+                    ? this.pool.getCustomDataPool()?.[index] 
+                    : this.pool.getDataPool()[index];
+                if (!item) return;
 
-                hoverCard = card;
+                this.hoverCard = card;
                 card.classList.add('hover-playing');
+
+                let videoUrl = item.url || card.dataset.videoUrl || '';
+                if (!videoUrl) {
+                    try {
+                        const resolved = await this.pool.loadDetails(item);
+                        videoUrl = resolved?.url || '';
+                        if (videoUrl) {
+                            card.setAttribute('data-video-url', videoUrl);
+                        }
+                    } catch (err) {
+                        console.warn('Failed to resolve video URL on hover:', err);
+                    }
+                }
+
+                if (!videoUrl || card !== this.hoverCard) {
+                    if (card === this.hoverCard) this.clearActiveHoverVideo();
+                    return;
+                }
 
                 const video = document.createElement('video');
                 video.className = 'card-hover-video';
@@ -364,13 +729,13 @@ export class Layout {
                 video.playsInline = true;
                 video.preload = 'auto';
                 card.appendChild(video);
-                hoverVideo = video;
+                this.hoverVideo = video;
                 video.play().catch(() => {/* autoplay blocked */ });
             }, true);
 
             gridContainer.addEventListener('mouseleave', (e) => {
                 const card = (e.target as HTMLElement).closest('.media-card') as HTMLElement | null;
-                if (card && card === hoverCard) clearHoverVideo();
+                if (card && card === this.hoverCard) this.clearActiveHoverVideo();
             }, true);
 
             // ── Mobile touch: long-press (450ms) to preview, short tap to open ──
@@ -378,12 +743,38 @@ export class Layout {
             let touchStartY = 0;
             let touchScrolled = false;
 
-            const startTouchPreview = (card: HTMLElement) => {
-                clearHoverVideo();
-                const videoUrl = card.dataset.videoUrl;
-                if (!videoUrl) return;
-                hoverCard = card;
+            const startTouchPreview = async (card: HTMLElement) => {
+                this.clearActiveHoverVideo();
+                
+                const indexAttr = card.getAttribute('data-index');
+                if (!indexAttr) return;
+                const index = parseInt(indexAttr);
+                const item = this.isBookmarksView 
+                    ? this.pool.getCustomDataPool()?.[index] 
+                    : this.pool.getDataPool()[index];
+                if (!item) return;
+
+                this.hoverCard = card;
                 card.classList.add('hover-playing');
+
+                let videoUrl = item.url || card.dataset.videoUrl || '';
+                if (!videoUrl) {
+                    try {
+                        const resolved = await this.pool.loadDetails(item);
+                        videoUrl = resolved?.url || '';
+                        if (videoUrl) {
+                            card.setAttribute('data-video-url', videoUrl);
+                        }
+                    } catch (err) {
+                        console.warn('Failed to resolve video URL on touch preview:', err);
+                    }
+                }
+
+                if (!videoUrl || card !== this.hoverCard) {
+                    if (card === this.hoverCard) this.clearActiveHoverVideo();
+                    return;
+                }
+
                 const video = document.createElement('video');
                 video.className = 'card-hover-video';
                 video.src = videoUrl;
@@ -392,13 +783,13 @@ export class Layout {
                 video.loop = true;
                 video.playsInline = true;
                 card.appendChild(video);
-                hoverVideo = video;
+                this.hoverVideo = video;
                 video.play().catch(() => { });
             };
 
             gridContainer.addEventListener('touchstart', (e: TouchEvent) => {
                 const card = (e.target as HTMLElement).closest('.media-card') as HTMLElement | null;
-                if (!card || !card.dataset.videoUrl) return;
+                if (!card) return;
                 touchScrolled = false;
                 touchStartY = e.touches[0].clientY;
                 touchTimer = setTimeout(() => {
@@ -415,46 +806,75 @@ export class Layout {
 
             gridContainer.addEventListener('touchend', (e: TouchEvent) => {
                 if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
-                if (hoverCard) {
-                    // Was in preview mode → stop preview, suppress the click
-                    clearHoverVideo();
+                if (this.hoverCard) {
+                    this.clearActiveHoverVideo();
                     e.preventDefault();
                 }
-                // Short tap (no preview) → click fires naturally → opens player
             }, { passive: false });
 
             gridContainer.addEventListener('touchcancel', () => {
                 if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
-                clearHoverVideo();
+                this.clearActiveHoverVideo();
             }, { passive: true });
         }
     }
 
     // ─── UI sync helpers ────────────────────────────────────────────
 
-    private syncRangeUI(range: string) {
-        // Sync sidebar
-        document.querySelectorAll('.nav-item[data-range]').forEach(n => n.classList.remove('active'));
-        document.querySelector(`.nav-item[data-range="${range}"]`)?.classList.add('active');
-        // Sync mobile dropdown
-        document.querySelectorAll('#range-dropdown .mobile-dd-item').forEach(n => n.classList.remove('active'));
-        document.querySelector(`#range-dropdown .mobile-dd-item[data-range="${range}"]`)?.classList.add('active');
-    }
+    private syncFiltersUI(activeParams: Record<string, string>) {
+        Object.entries(activeParams).forEach(([groupId, activeValue]) => {
+            // 1. Sidebar items
+            document.querySelectorAll(`.nav-item[data-filter-group="${groupId}"]`).forEach(n => {
+                const val = (n as HTMLElement).dataset.filterValue;
+                n.classList.toggle('active', val === activeValue);
+            });
 
-    private syncSortUI(sort: string) {
-        // Sync desktop sort buttons
-        document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
-        document.querySelector(`.sort-btn[data-sort="${sort}"]`)?.classList.add('active');
-        // Sync mobile dropdown
-        document.querySelectorAll('#sort-dropdown .mobile-dd-item').forEach(n => n.classList.remove('active'));
-        document.querySelector(`#sort-dropdown .mobile-dd-item[data-sort="${sort}"]`)?.classList.add('active');
+            // 2. Mobile dropdown items
+            document.querySelectorAll(`.mobile-dd-item[data-filter-group="${groupId}"]`).forEach(n => {
+                const val = (n as HTMLElement).dataset.filterValue;
+                n.classList.toggle('active', val === activeValue);
+            });
+
+            // 3. Desktop sort buttons
+            document.querySelectorAll(`.sort-btn[data-filter-group="${groupId}"]`).forEach(n => {
+                const val = (n as HTMLElement).dataset.filterValue;
+                n.classList.toggle('active', val === activeValue);
+            });
+
+            // 4. Desktop extra dropdown items
+            document.querySelectorAll(`.extra-filter-dropdown[data-group-id="${groupId}"] .site-dd-item`).forEach(n => {
+                const val = (n as HTMLElement).dataset.filterValue;
+                n.classList.toggle('active', val === activeValue);
+            });
+
+            // Update extra dropdown button label
+            const dropdownBtn = document.querySelector(`.extra-filter-dropdown[data-group-id="${groupId}"] .site-switch-btn span`);
+            if (dropdownBtn) {
+                const filters = this.getActiveFilters();
+                const group = filters.find(g => g.id === groupId);
+                const activeOpt = group?.options.find(o => o.id === activeValue);
+                if (activeOpt) {
+                    dropdownBtn.textContent = `${group.title}: ${activeOpt.label}`;
+                }
+            }
+        });
     }
 
     // ─── Data loading ───────────────────────────────────────────────
 
     private async loadInitialData() {
         try {
-            await this.pool.loadInitialData();
+            const filters = this.getActiveFilters();
+            const defaultParams: Partial<QueryState> = {};
+            filters.forEach(group => {
+                if (group.options && group.options.length > 0) {
+                    defaultParams[group.id] = group.options[0].id;
+                }
+            });
+            await this.pool.loadInitialData(defaultParams);
+
+            this.syncFiltersUI(this.pool.getCurrentQuery());
+
             if (this.pool.getDataPool().length === 0) {
                 this.renderEmptyState();
             } else {
@@ -470,9 +890,13 @@ export class Layout {
 
     private async loadMoreData() {
         try {
+            const prevLength = this.pool.getDataPool().length;
+            this.pool.stopPrefetching();
+            
             const newData = await this.pool.fetchNextPage();
             if (newData && newData.length > 0) {
                 this.renderGrid(true);
+                this.scheduleHomepagePrefetch(prevLength);
             } else if (this.pool.getDataPool().length === 0) {
                 this.renderEmptyState();
             }
@@ -484,25 +908,103 @@ export class Layout {
 
     // ─── Rendering ──────────────────────────────────────────────────
 
+    private loadBookmarksData() {
+        // Load v2 bookmarks
+        const bookmarks = loadGM(STORAGE_KEYS.BOOKMARKS_V2, []) as BookmarkItem[];
+        
+        // Filter by Site
+        let filtered = bookmarks;
+        if (this.bookmarkFilterSite !== 'all') {
+            filtered = bookmarks.filter(b => b.currentRankingSite === this.bookmarkFilterSite);
+        }
+
+        // Filter by Downloaded status if not included
+        if (!this.bookmarkIncludeDownloaded) {
+            const downloaded = new Set(loadGM(STORAGE_KEYS.DOWNLOADED, []) as string[]);
+            filtered = filtered.filter(b => !downloaded.has(b.id));
+        }
+
+        // Sort
+        if (this.bookmarkSort === 'recent') {
+            filtered.sort((a, b) => b.bookmarkTime - a.bookmarkTime);
+        } else if (this.bookmarkSort === 'oldest') {
+            filtered.sort((a, b) => a.bookmarkTime - b.bookmarkTime);
+        } else if (this.bookmarkSort === 'views') {
+            filtered.sort((a, b) => (b.pv || 0) - (a.pv || 0));
+        } else if (this.bookmarkSort === 'duration') {
+            filtered.sort((a, b) => (b.duration || 0) - (a.duration || 0));
+        }
+
+        // Map BookmarkItem[] to UnifiedVideoItem[]
+        const unifiedVideos = filtered.map(b => ({
+            id: b.id,
+            url_cd: b.url_cd,
+            thumbnail: b.thumbnail,
+            title: b.tweetTitle,
+            tweet_account: b.authorId,
+            favorite: 0,
+            pv: b.pv,
+            duration: b.duration,
+            url: b.url,
+            isDetailsLoaded: true,
+            originalUrl: b.videoUrl
+        }));
+
+        this.pool.setCustomDataPool(unifiedVideos);
+
+        const el = document.getElementById('section-title');
+        if (el) {
+            const siteLabel = this.bookmarkFilterSite === 'all' ? '全部站点' : this.bookmarkFilterSite.toUpperCase();
+            const sortLabel = this.bookmarkSort === 'recent' ? '最近收藏' : (this.bookmarkSort === 'oldest' ? '最早收藏' : (this.bookmarkSort === 'views' ? '播放最多' : '时长最长'));
+            el.innerHTML = `${t('myBookmarks')} · ${siteLabel} · ${sortLabel} <button type="button" class="back-to-rankings-btn" id="back-to-rankings-btn">← 返回排行榜</button>`;
+            // Bind back button
+            const backBtn = document.getElementById('back-to-rankings-btn');
+            backBtn?.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                this.isBookmarksView = false;
+                this.pool.clearCustomDataPool();
+                this.createPageStructure();
+                this.bindEvents();
+                this.loadInitialData();
+            });
+        }
+
+        this.renderFilterPanel();
+
+        if (unifiedVideos.length === 0) {
+            this.renderEmptyState();
+        } else {
+            this.renderGrid(false);
+            this.playNo1AutoVideo();
+        }
+    }
+
     private renderAll() {
         this.updateSectionTitle();
         this.renderGrid(false);
+        this.playNo1AutoVideo();
+        this.scheduleHomepagePrefetch(0);
     }
 
     /** 展示当前榜单和排序模式信息 */
     private updateSectionTitle() {
         const el = document.getElementById('section-title');
         if (!el) return;
+        
         const q = this.pool.getCurrentQuery();
-        const rangeLabel: Record<string, string> = {
-            daily: '日榜', weekly: '周榜', monthly: '月榜', all: '总榜',
-        };
-        const sortLabel: Record<string, string> = {
-            favorite: '最多喜欢', pv: '最高播放', recent: '最新发布',
-        };
-        const rl = rangeLabel[q.range] || q.range;
-        const sl = sortLabel[q.sort] || q.sort;
-        el.innerHTML = `${rl}·${sl} <span style="font-size:0.875rem;color:var(--text-400);font-family:var(--font-body);font-weight:400;">Trending Now</span>`;
+        const filters = this.getActiveFilters();
+        const labels: string[] = [];
+
+        filters.forEach(group => {
+            const val = q[group.id];
+            const opt = group.options.find((o: any) => o.id === val) || group.options[0];
+            if (opt) {
+                labels.push(tLabel(opt.label));
+            }
+        });
+
+        const titleText = labels.join(' · ');
+        el.textContent = titleText;
     }
 
     private renderEmptyState() {
@@ -512,8 +1014,8 @@ export class Layout {
             container.innerHTML = `
                 <div class="empty-state">
                     <svg viewBox="0 0 24 24" fill="var(--text-400)"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-                    <h3>流媒体荒原</h3>
-                    <p>当前频道或范围尚未产生数据<br>请切换条件试试吧</p>
+                    <h3>${t('emptyTitle')}</h3>
+                    <p>${t('emptyDesc')}</p>
                 </div>
             `;
         }
@@ -526,9 +1028,9 @@ export class Layout {
             container.innerHTML = `
                 <div class="empty-state">
                     <svg viewBox="0 0 24 24" fill="var(--accent-primary)"><path d="M11 15h2v2h-2zm0-8h2v6h-2zm.99-5C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z"/></svg>
-                    <h3>网络链路中断</h3>
-                    <p style="margin-bottom: 1.5rem">跨越次元壁的过程遇到了一点干扰</p>
-                    <button class="retry-btn" onclick="document.dispatchEvent(new CustomEvent('xflow-retry'))">重试连接</button>
+                    <h3>${t('errorTitle')}</h3>
+                    <p style="margin-bottom: 1.5rem">${t('errorDesc')}</p>
+                    <button class="retry-btn" onclick="document.dispatchEvent(new CustomEvent('xflow-retry'))">${t('retryConnect')}</button>
                 </div>
             `;
 
@@ -545,8 +1047,8 @@ export class Layout {
 
         const retryHtml = `
             <div id="tm-retry-block" class="retry-block">
-                <p style="color: var(--text-300); margin-bottom: 1rem; font-size: 0.9rem;">发现新的内容，但加载失败了</p>
-                <button class="retry-btn" id="tm-retry-load">继续加载</button>
+                <p style="color: var(--text-300); margin-bottom: 1rem; font-size: 0.9rem;">${t('loadError')}</p>
+                <button class="retry-btn" id="tm-retry-load">${t('retry')}</button>
             </div>
         `;
         container.insertAdjacentHTML('beforeend', retryHtml);
@@ -561,351 +1063,94 @@ export class Layout {
         }
     }
 
-    /**
-     * 独立并行拉取四个榜单 top3，填充 Hero Carousel 并启动自动轮播。
-     *
-     * 修复：Hero 获取的视频数据通过 PoolManager.preload() 注入缓存层，
-     * 后续 TikTokMode 打开相同 range 时可复用缓存，
-     * 避免 Hero 和播放器各自独立缓冲同一批视频。
-     */
-    private async loadHeroCarousel() {
-        const isAnime = this.pool.getApiClient().getIsAnime();
-
-        const fetches = Layout.HERO_RANGES.map(async (r) => {
-            const query = { isAnimeOnly: isAnime, range: r.id, sort: 'favorite', perPage: 3 };
-
-            // 1. 先查缓存（可能已被 preload 或其他路径填充）
-            const cached = this.pool.getCachedItems(query);
-            if (cached.length > 0) {
-                return { id: r.id, items: cached.slice(0, 3) };
-            }
-
-            // 2. 缓存未命中 → 通过 preload 获取并写入缓存
-            try {
-                await this.pool.preload(query);
-                const fresh = this.pool.getCachedItems(query);
-                return { id: r.id, items: fresh.slice(0, 3) };
-            } catch {
-                return { id: r.id, items: [] as any[] };
-            }
-        });
-
-        const results = await Promise.all(fetches);
-
-        // Store top-3 data and initialise sub-index for each range
-        results.forEach(({ id, items }) => {
-            this.heroData.set(id, items);
-            this.heroSubIndex.set(id, 0);
-        });
-
-        // Populate first item (index 0) into each card
-        results.forEach(({ id, items }) => {
-            if (!items.length) return;
-            this.populateHeroCard(id, items[0], 0);
-        });
-
-        // Mirror clone slots
-        const allItems = this.heroData.get('all') || [];
-        const dailyItems = this.heroData.get('daily') || [];
-        if (allItems.length) this.populateHeroCard('clone-prev', allItems[0], 0);
-        if (dailyItems.length) this.populateHeroCard('clone-next', dailyItems[0], 0);
-
-        // Start auto-loop for each real card
-        this.startHeroAutoLoop();
+    private clearActiveHoverVideo() {
+        if (this.hoverVideo) {
+            this.hoverVideo.pause();
+            this.hoverVideo.removeAttribute('src');
+            this.hoverVideo.load();
+            this.hoverVideo.remove();
+            this.hoverVideo = null;
+        }
+        if (this.hoverCard) {
+            this.hoverCard.classList.remove('hover-playing', 'auto-playing-no1');
+            this.hoverCard = null;
+        }
     }
 
-    /**
-     * Populate a hero card slot with a specific item's data.
-     */
-    private populateHeroCard(key: string, item: any, subIndex: number) {
+    private getCleanBloggerName(name: string): string {
+        if (!name) return '';
+        return name.replace(/的视频(空间)?$/g, '').trim();
+    }
+
+    private switchToBookmarksView() {
+        this.isBookmarksView = true;
+        this.createPageStructure();
+        this.bindEvents();
+        this.loadBookmarksData();
+    }
+
+    private async playNo1AutoVideo() {
+        const grid = document.getElementById('grid-container');
+        if (!grid) return;
+
+        this.clearActiveHoverVideo();
+
+        const card = grid.querySelector('.media-card[data-index="0"]') as HTMLElement | null;
+        if (!card) return;
+
+        const item = this.isBookmarksView 
+            ? this.pool.getCustomDataPool()?.[0] 
+            : this.pool.getDataPool()[0];
         if (!item) return;
 
-        const skeleton = document.getElementById(`hc-sk-${key}`);
-        if (skeleton) skeleton.style.display = 'none';
+        this.hoverCard = card;
+        card.classList.add('hover-playing', 'auto-playing-no1');
 
-        const bg = document.getElementById(`hc-bg-${key}`);
-        if (bg) {
-            bg.style.backgroundImage = `url("${escapeCSSUrl(item.thumbnail)}")`;
-            bg.style.opacity = '1';
-        }
-
-        const titleEl = document.getElementById(`hc-title-${key}`);
-        if (titleEl) titleEl.textContent = item.title || `@${item.tweet_account}`;
-
-        const likesEl = document.getElementById(`hc-likes-${key}`);
-        if (likesEl) likesEl.textContent = formatCount(item.favorite);
-
-        const pvEl = document.getElementById(`hc-pv-${key}`);
-        if (pvEl) pvEl.textContent = formatCount(item.pv);
-
-        // Update rank numbers
-        const rankEl = document.getElementById(`hc-rank-${key}`);
-        if (rankEl) {
-            const newRank = `No.${subIndex + 1}`;
-            if (rankEl.textContent !== newRank) {
-                rankEl.classList.add('switching');
-                setTimeout(() => {
-                    rankEl.textContent = newRank;
-                    rankEl.classList.remove('switching');
-                }, 200);
-            }
-        }
-
-        const badgeRankEl = document.getElementById(`hc-badge-rank-${key}`);
-        if (badgeRankEl) {
-            badgeRankEl.textContent = `No.0${subIndex + 1}`;
-        }
-
-        // Store current sub-index on the card element for click handlers
-        const card = document.getElementById(`hc-card-${key}`) as HTMLElement | null;
-        if (card) {
-            card.dataset.heroSubIndex = String(subIndex);
-            if (item.url) card.dataset.videoUrl = item.url;
-        }
-    }
-
-    /**
-     * Start auto-loop: each range cycles top1→top2→top3 every 10 seconds.
-     * 只有当前可见卡片的视频会真正加载播放，隐藏卡片只更新文案和缩略图状态。
-     */
-    private startHeroAutoLoop() {
-        // Clear existing timers
-        this.heroTimers.forEach(t => clearInterval(t));
-        this.heroTimers.clear();
-
-        const INTERVAL = 10_000; // 10 seconds per item
-
-        for (const range of Layout.HERO_RANGES) {
-            const items = this.heroData.get(range.id);
-            if (!items || items.length <= 1) continue; // No rotation needed for 0 or 1 item
-
-            const timer = setInterval(() => {
-                const currentSub = this.heroSubIndex.get(range.id) ?? 0;
-                const nextSub = (currentSub + 1) % items.length;
-                this.heroSubIndex.set(range.id, nextSub);
-
-                const nextItem = items[nextSub];
-                this.populateHeroCard(range.id, nextItem, nextSub);
-
-                // Also sync clone card if this range is daily or all
-                if (range.id === 'all') {
-                    this.populateHeroCard('clone-prev', nextItem, nextSub);
-                } else if (range.id === 'daily') {
-                    this.populateHeroCard('clone-next', nextItem, nextSub);
+        let videoUrl = item.url || card.dataset.videoUrl || '';
+        if (!videoUrl) {
+            try {
+                const resolved = await this.pool.loadDetails(item);
+                videoUrl = resolved?.url || '';
+                if (videoUrl) {
+                    card.setAttribute('data-video-url', videoUrl);
                 }
-
-                this.syncVisibleHeroPlayback();
-            }, INTERVAL);
-
-            this.heroTimers.set(range.id, timer);
+            } catch (err) {
+                console.warn('Failed to resolve No.1 video URL:', err);
+            }
         }
 
-        this.syncVisibleHeroPlayback();
-    }
+        if (!videoUrl || card !== this.hoverCard) {
+            if (card === this.hoverCard) this.clearActiveHoverVideo();
+            return;
+        }
 
-    /**
-     * 只允许当前可见卡片的视频占用带宽；其余全部卸载，避免和播放器抢缓存。
-     */
-    private syncVisibleHeroPlayback() {
-        const activeKey = this.getHeroSlotKey(this.heroCarouselPos);
-        const allKeys = ['daily', 'weekly', 'monthly', 'all', 'clone-prev', 'clone-next'];
-
-        allKeys.forEach((key) => {
-            if (key === activeKey) {
-                this.playHeroVideo(key, this.getHeroItemForKey(key));
-            } else {
-                this.unloadHeroVideo(key);
-            }
-        });
-    }
-
-    /**
-     * 当前 slot 对应的数据项。
-     */
-    private getHeroItemForKey(key: string) {
-        const rangeKey = key === 'clone-prev' ? 'all' : (key === 'clone-next' ? 'daily' : key);
-        const items = this.heroData.get(rangeKey) || [];
-        const subIndex = this.heroSubIndex.get(rangeKey) ?? 0;
-        return items[subIndex] || null;
-    }
-
-    private getHeroSlotKey(pos: number) {
-        return ['clone-prev', 'daily', 'weekly', 'monthly', 'all', 'clone-next'][pos] || 'daily';
-    }
-
-    private playHeroVideo(key: string, item: any) {
-        const video = document.getElementById(`hc-video-${key}`) as HTMLVideoElement | null;
-        if (!video || !item?.url) return;
-
-        const itemId = String(item.id ?? item.url);
-        const needsNewSource = video.dataset.itemId !== itemId;
-
-        video.preload = 'auto';
+        const video = document.createElement('video');
+        video.className = 'card-hover-video no1-auto-video';
+        video.src = videoUrl;
         video.muted = true;
+        video.autoplay = true;
+        video.loop = true;
         video.playsInline = true;
-        video.classList.add('playing');
+        video.preload = 'auto';
 
-        if (needsNewSource) {
-            video.src = item.url;
-            video.dataset.itemId = itemId;
-            video.currentTime = 0;
-        }
+        card.appendChild(video);
+        this.hoverVideo = video;
+        this.hoverCard = card;
 
-        video.play().catch(() => { });
+        video.play().catch(() => {/* autoplay blocked */});
     }
 
-    private unloadHeroVideo(key: string) {
-        const video = document.getElementById(`hc-video-${key}`) as HTMLVideoElement | null;
-        if (!video) return;
-
-        video.pause();
-        video.classList.remove('playing');
-        video.preload = 'none';
-
-        if (video.currentSrc || video.getAttribute('src')) {
-            video.removeAttribute('src');
-            delete video.dataset.itemId;
-            video.load();
-        }
-    }
-
-    /** Infinite-loop carousel — 6 slots: [clone-all | d | w | m | a | clone-daily] */
-    private bindCarouselEvents() {
-        const track = document.getElementById('hc-track') as HTMLElement | null;
-        if (!track) return;
-
-        const REAL = 4;
-        const TOTAL = 6; // 2 clones + 4 real
-        const STEP = 100 / TOTAL; // ≈ 16.6667%
-        this.heroCarouselPos = 1; // start at real-daily (slot index 1)
-
-        const dots = Array.from(document.querySelectorAll('.hc-dot'));
-
-        const applyPos = (animated: boolean) => {
-            track.style.transition = animated ? 'transform 0.55s var(--ease-smooth)' : 'none';
-            track.style.transform = `translateX(-${this.heroCarouselPos * STEP}%)`;
-            this.syncVisibleHeroPlayback();
-        };
-
-        const syncDots = () => {
-            // real cards: pos 1→dot0, 2→dot1, 3→dot2, 4→dot3 (clones map to their mirror)
-            const di = ((this.heroCarouselPos - 1 + REAL) % REAL);
-            dots.forEach((d, i) => d.classList.toggle('active', i === di));
-        };
-
-        // Initialize without animation
-        applyPos(false);
-        syncDots();
-
-        const advance = (delta: number) => {
-            this.heroCarouselPos += delta;
-            applyPos(true);
-            syncDots();
-        };
-
-        // After slide animation ends: if we're on a clone, instant-jump to real mirror
-        track.addEventListener('transitionend', () => {
-            if (this.heroCarouselPos <= 0) {
-                this.heroCarouselPos = REAL;        // clone-prev (all) → jump to real all (slot 4)
-                applyPos(false);
-            } else if (this.heroCarouselPos >= TOTAL - 1) {
-                this.heroCarouselPos = 1;           // clone-next (daily) → jump to real daily (slot 1)
-                applyPos(false);
+    private scheduleHomepagePrefetch(startIndex: number = 0) {
+        this.pool.stopPrefetching();
+        if (this.isBookmarksView) return;
+        
+        setTimeout(() => {
+            const playerModal = document.getElementById('tm-tiktok-modal');
+            const isPlayerOpen = playerModal && playerModal.style.display !== 'none';
+            if (!isPlayerOpen && !this.isBookmarksView) {
+                this.pool.startPrefetching(startIndex, 8, 1200);
             }
-
-            syncDots();
-        });
-
-        document.getElementById('hc-prev')?.addEventListener('click', () => advance(-1));
-        document.getElementById('hc-next')?.addEventListener('click', () => advance(1));
-
-        dots.forEach((dot, i) => dot.addEventListener('click', () => {
-            this.heroCarouselPos = i + 1; // dot0 → pos1, dot1 → pos2, ...
-            applyPos(true);
-            syncDots();
-        }));
-
-        // Touch swipe on carousel track
-        let hcTsx = 0;
-        let hcTsy = 0;
-        track.addEventListener('touchstart', (e: TouchEvent) => {
-            hcTsx = e.touches[0].clientX;
-            hcTsy = e.touches[0].clientY;
-        }, { passive: true });
-        track.addEventListener('touchend', (e: TouchEvent) => {
-            const dx = hcTsx - e.changedTouches[0].clientX;
-            const dy = Math.abs(e.changedTouches[0].clientY - hcTsy);
-            // Only swipe horizontally (ignore vertical scroll)
-            if (Math.abs(dx) > 50 && Math.abs(dx) > dy * 1.5) {
-                advance(dx > 0 ? 1 : -1);
-            }
-        }, { passive: true });
-
-        // Click on real carousel cards → switch to that ranking and open player
-        document.getElementById('hero-carousel')?.addEventListener('click', (e) => {
-            const card = (e.target as HTMLElement).closest('.hc-card') as HTMLElement | null;
-            if (!card || card.classList.contains('hc-clone')) return;
-
-            // Prevent clicks on nav arrows
-            if ((e.target as HTMLElement).closest('.hc-arrow')) return;
-
-            const range = card.dataset.range;
-            if (!range) return;
-
-            const subIndex = parseInt(card.dataset.heroSubIndex || '0');
-            this.handleHeroCardClick(range, subIndex);
-        });
-    }
-
-    /**
-     * Hero card click handler:
-     * 1. Switch main grid + section title to the clicked card's range
-     * 2. Open TikTok player at the sub-index position (top1/top2/top3)
-     */
-    private async handleHeroCardClick(range: string, startIndex: number) {
-        log(`Hero card clicked: range=${range}, startIndex=${startIndex}`);
-
-        // Pause all hero videos while in player
-        this.pauseAllHeroVideos(true);
-
-        // Sync range UI (sidebar + mobile dropdown)
-        this.syncRangeUI(range);
-
-        // Switch main data pool to this range
-        await this.applyFilters({ range });
-
-        // Open player at the correct sub-index
-        this.player.openModal(startIndex);
-    }
-
-    /**
-     * Pause all hero card preview videos.
-     */
-    private pauseAllHeroVideos(unload: boolean = false) {
-        const keys = ['daily', 'weekly', 'monthly', 'all', 'clone-prev', 'clone-next'];
-        keys.forEach((key) => {
-            if (unload) {
-                this.unloadHeroVideo(key);
-                return;
-            }
-
-            const video = document.getElementById(`hc-video-${key}`) as HTMLVideoElement | null;
-            if (video) {
-                video.pause();
-                video.classList.remove('playing');
-            }
-        });
-
-        // Stop auto-loop timers
-        this.heroTimers.forEach(t => clearInterval(t));
-        this.heroTimers.clear();
-    }
-
-    /**
-     * Resume hero video auto-loop after player closes.
-     */
-    private resumeHeroVideos() {
-        this.startHeroAutoLoop();
+        }, 2500);
     }
 
     private renderGrid(append: boolean = false) {
@@ -922,19 +1167,24 @@ export class Layout {
             oldRetryBlock.remove();
         }
 
+        const downloadedSet = new Set(loadGM(STORAGE_KEYS.DOWNLOADED, []) as string[]);
+
         for (let i = startIndex; i < list.length; i++) {
             const item = list[i];
             const rankNum = i + 1;
             let rankClass = rankNum === 1 ? 'rank-1' : (rankNum === 2 ? 'rank-2' : (rankNum === 3 ? 'rank-3' : ''));
+            const isDownloaded = downloadedSet.has(item.id);
 
             html += `
             <div class="media-card" style="animation-delay: ${(i % 20) * 0.05}s" data-index="${i}" ${item.url ? `data-video-url="${escapeHtml(item.url)}"` : ''} role="button" tabindex="0" aria-label="${escapeHtml(item.title || 'Video card')}">
                 <img src="${item.thumbnail}" alt="${escapeHtml(item.title || 'Thumbnail')}" class="card-img" loading="lazy" referrerpolicy="no-referrer">
                 <div class="card-overlay"></div>
                 <div class="card-rank ${rankClass}">No.${rankNum}</div>
+                ${isDownloaded ? '<div class="card-downloaded-badge">✓ 已下载</div>' : ''}
                 <div class="card-play-icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
                 <div class="card-info">
-                    <div class="card-title">${escapeHtml(item.title || `@${item.tweet_account} 的视频`)}</div>
+                    <div class="card-author">${escapeHtml(this.getCleanBloggerName(item.authorDisplayName || item.tweet_account || ''))}</div>
+                    ${item.title ? `<div class="card-title">${escapeHtml(item.title)}</div>` : ''}
                     <div class="card-stats">
                         <span class="stat"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54z"/></svg> ${formatCount(item.favorite)}</span>
                         ${(item.commentCount || (item._count && item._count.comments)) ? `<span class="stat"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18zM18 14H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/></svg> ${formatCount(item.commentCount || (item._count && item._count.comments))}</span>` : ''}

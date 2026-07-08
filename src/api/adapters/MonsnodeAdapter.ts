@@ -1,24 +1,71 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
 
 export class MonsnodeAdapter implements SiteAdapter {
     id = 'monsnode';
     name = 'Monsnode (HTML Scraper & Redirect resolver)';
 
+    private static readonly RANGE_MAP: Record<string, string> = {
+        daily: '24h',
+        weekly: '3d',
+        monthly: '7d',
+        all: '7d',
+        '24h': '24h',
+        '3d': '3d',
+        '7d': '7d'
+    };
+
     matches(hostname: string): boolean {
         return hostname.includes('monsnode.com');
+    }
+
+    getFilterGroups(isAnime: boolean): FilterGroup[] {
+        return [
+            {
+                id: 'range',
+                title: '范围 Period',
+                type: 'range',
+                options: [
+                    { id: '24h', label: '24小时榜', en: '24 Hours' },
+                    { id: '3d', label: '3天榜', en: '3 Days' },
+                    { id: '7d', label: '周榜', en: 'Weekly' }
+                ]
+            },
+            {
+                id: 'sort',
+                title: '排序 Sort',
+                type: 'sort',
+                options: [
+                    { id: 'pv', label: '综合排行' },
+                    { id: 'favorite', label: '推荐排行' }
+                ]
+            }
+        ];
+    }
+
+    getHeroRanges(isAnime: boolean): HeroRange[] {
+        return [
+            { id: '24h', label: '24小时榜', en: '24 Hours', icon: '⏱' },
+            { id: '3d', label: '3天榜', en: '3 Days', icon: '📅' },
+            { id: '7d', label: '周榜', en: 'Weekly', icon: '🏆' }
+        ];
     }
 
     async fetchList(params: FetchParams, isAnime: boolean): Promise<FetchListResult> {
         const runtime = getRuntimeAdapter();
         const origin = window.location.origin;
         
-        // Monsnode uses 0-based page indexing. Inherit current URL search params (e.g. ranking=1&period=24h)
         const page = String(Math.max(0, parseInt(params.cursor || '0')));
-        const currentUrl = new URL(window.location.href);
-        const urlParams = new URLSearchParams(currentUrl.search);
+        const urlParams = new URLSearchParams();
         urlParams.set('page', page);
+
+        const rangeKey = params.range || 'daily';
+        const mappedPeriod = MonsnodeAdapter.RANGE_MAP[rangeKey] ?? rangeKey ?? '24h';
+        const mappedRanking = params.sort === 'pv' ? '8' : '1';
+
+        urlParams.set('period', mappedPeriod);
+        urlParams.set('ranking', mappedRanking);
 
         const res = await runtime.http.request<string>({
             method: 'GET',

@@ -24,6 +24,7 @@ export class PoolManager {
     private isLoading: boolean = false;
     private hasMore: boolean = true;
     private listeners: ((items: any[]) => void)[] = [];
+    private detailListeners: ((item: any) => void)[] = [];
     private activeRequestId: number = 0;
     private preloadInFlight = new Set<string>();
     private readonly runtime: RuntimeAdapter;
@@ -236,6 +237,7 @@ export class PoolManager {
                 item.url = resolved;
             }
             item.isDetailsLoaded = true;
+            this.detailListeners.forEach(cb => cb(item));
             log(`PoolManager: Loaded details for ${item.id}`);
         } catch (e) {
             log(`PoolManager: Failed to load details for ${item.id}`, e);
@@ -265,6 +267,10 @@ export class PoolManager {
         this.listeners.push(cb);
     }
 
+    public onDetailLoaded(cb: (item: any) => void) {
+        this.detailListeners.push(cb);
+    }
+
     public getIsLoading() {
         return this.isLoading;
     }
@@ -274,7 +280,7 @@ export class PoolManager {
     }
 
     public getDataPool() {
-        return this.dataPool;
+        return this.customDataPool || this.dataPool;
     }
 
     public getCurrentQuery(): QueryState {
@@ -283,5 +289,86 @@ export class PoolManager {
 
     public getApiClient(): ApiClient {
         return this.api;
+    }
+
+    // ── Custom Data Pool (for bookmarks / author videos) ──────────
+    private customDataPool: any[] | null = null;
+
+    public setCustomDataPool(list: any[]) {
+        this.customDataPool = list;
+    }
+
+    public clearCustomDataPool() {
+        this.customDataPool = null;
+    }
+
+    public getRawDataPool() {
+        return this.dataPool;
+    }
+
+    public getCustomDataPool() {
+        return this.customDataPool;
+    }
+
+    // ── Background Details Prefetching ────────────────────────────
+    private prefetchAbortId = 0;
+
+    /**
+     * 停止当前的后台预采集任务，释放 HTTP 连接池
+     */
+    public stopPrefetching() {
+        this.prefetchAbortId++;
+        log('PoolManager: Prefetching stopped');
+    }
+
+    /**
+     * 后台并行的视频预采集：从 currentIndex 起，预加载接下来 count 个未加载详情的视频。
+     * 支持最大 3 个并发线程，每个线程拉取队列中的下一个任务，并在任务间有 delayMs 间隔以防 rate limit。
+     */
+    public async startPrefetching(currentIndex: number, count: number = 5, delayMs: number = 800) {
+        const abortId = ++this.prefetchAbortId;
+        const pool = this.getDataPool();
+
+        // 收集需要预加载详情的视频
+        const itemsToPrefetch: any[] = [];
+        for (let offset = 1; offset <= count; offset++) {
+            const idx = currentIndex + offset;
+            if (idx >= pool.length) break;
+            const item = pool[idx];
+            if (item && !item.isDetailsLoaded) {
+                itemsToPrefetch.push(item);
+            }
+        }
+
+        if (itemsToPrefetch.length === 0) return;
+
+        let queueIndex = 0;
+
+        const worker = async () => {
+            while (queueIndex < itemsToPrefetch.length && abortId === this.prefetchAbortId) {
+                // 原子地获取下一个任务索引
+                const currentIdx = queueIndex++;
+                if (currentIdx >= itemsToPrefetch.length) break;
+
+                const item = itemsToPrefetch[currentIdx];
+                try {
+                    await this.loadDetails(item);
+                } catch { /* logged inside loadDetails */ }
+
+                // 线程内请求间隔
+                if (queueIndex < itemsToPrefetch.length && abortId === this.prefetchAbortId) {
+                    await new Promise(r => setTimeout(r, delayMs));
+                }
+            }
+        };
+
+        // 限制最大并发数为 3
+        const maxConcurrency = Math.min(3, itemsToPrefetch.length);
+        const workers = [];
+        for (let i = 0; i < maxConcurrency; i++) {
+            workers.push(worker());
+        }
+
+        await Promise.all(workers);
     }
 }

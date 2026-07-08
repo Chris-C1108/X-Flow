@@ -1,10 +1,11 @@
 import { VirtualList } from './VirtualList';
 import { PoolManager } from '../api/PoolManager';
 import { formatTime, escapeHtml, formatCount } from '../utils/Format';
-import { loadJSON, saveJSON, loadGM, saveGM, STORAGE_KEYS } from '../engine/Storage';
+import { loadJSON, saveJSON, loadGM, saveGM, STORAGE_KEYS, BookmarkItem } from '../engine/Storage';
 import { collector } from '../telemetry/EventCollector';
 import { fetchComments, postComment, Comment } from '../api/CommentService';
 import { AdapterManager } from '../api/adapters/AdapterManager';
+import { t } from '../utils/i18n';
 
 function escapeCSSUrl(url: string) {
     return url.replace(/["'\\]/g, '\\$&');
@@ -22,14 +23,20 @@ export class TikTokMode {
     private currentIndex: number = 0;
     private loop: boolean;
     private bookmarks: Set<string>;
+    private bookmarksList: BookmarkItem[] = [];
+    private currentAuthorVideos: any[] = [];
     private likes: Set<string>;
     private preloadTimer: ReturnType<typeof setTimeout> | null = null;
     private isDraggingProgress: boolean = false;
     private onCloseCallback: (() => void) | null = null;
+    private onLibraryClickCallback: (() => void) | null = null;
+    private idleTimer: ReturnType<typeof setTimeout> | null = null;
     
     private progressFill: HTMLElement;
     private timeText: HTMLElement;
     private titleText: HTMLElement;
+    private authorText!: HTMLElement;
+    private pendingStartTime: number = 0;
     private volume: number;
     private isMuted: boolean;
     private playbackRate: number;
@@ -41,12 +48,17 @@ export class TikTokMode {
     private lastTapX: number = 0;
     private doubleTapTimer: ReturnType<typeof setTimeout> | null = null;
     private highlightMarkers: HTMLElement[] = [];
+    private hasBackup: boolean = false;
+    private backupCustomPool: any[] | null = null;
+    private backupIndex: number = 0;
+
 
     constructor(pool: PoolManager) {
         this.pool = pool;
         this.vl = new VirtualList();
         this.loop = !!loadJSON(STORAGE_KEYS.LOOP, false);
-        this.bookmarks = new Set(loadJSON(STORAGE_KEYS.BOOKMARKS, []) as string[]);
+        this.bookmarksList = loadGM(STORAGE_KEYS.BOOKMARKS_V2, []) as BookmarkItem[];
+        this.bookmarks = new Set(this.bookmarksList.map(b => b.id));
         this.likes = new Set(loadGM(STORAGE_KEYS.LIKES, []) as string[]);
         this.playbackRate = loadJSON(STORAGE_KEYS.PLAYBACK_RATE, 1) as number;
         const savedVol = loadJSON(STORAGE_KEYS.VOLUME, { volume: 0.7, muted: false }) as { volume: number; muted: boolean };
@@ -65,6 +77,9 @@ export class TikTokMode {
             <div class="tm-topbar">
                 <div class="tm-pill" id="tm-count" aria-live="polite">1 / 1</div>
                 <div class="tm-top-actions">
+                    <button type="button" class="tm-btn" id="tm-back-playlist-btn" aria-label="Back to previous playlist" tabindex="0" style="display:none; font-size:12px; padding:4px 10px; background:rgba(255,255,255,0.1); border-radius:12px; margin-right:8px; align-items:center; color:#fff; font-family:var(--font-body); font-weight:600; border:none; cursor:pointer;">
+                        ← 返回
+                    </button>
                     <button type="button" class="tm-btn tm-speed-btn" id="tm-speed-btn" aria-label="Playback speed" tabindex="0">
                         <span id="tm-speed-label">1×</span>
                     </button>
@@ -88,6 +103,7 @@ export class TikTokMode {
                 <svg id="tm-center-svg" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
             </div>
             <div class="tm-info">
+                <div class="tm-author-name" id="tm-author-name"></div>
                 <h2 class="tm-title" id="tm-title"></h2>
             </div>
             <div class="tm-volume-wrap" id="tm-volume-wrap">
@@ -105,47 +121,43 @@ export class TikTokMode {
                 <div class="tm-time" id="tm-time">0:00 / 0:00</div>
             </div>
             <div class="tm-actions" id="tm-actions" role="group" aria-label="Video actions">
-                <button type="button" class="tm-action like" id="tm-like-btn" aria-label="Like" tabindex="0">
-                    <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></div>
-                    <span class="txt" id="tm-like-count">0</span>
+                <button type="button" class="tm-action author" id="tm-author-btn" aria-label="Author" tabindex="0">
+                    <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></div>
+                    <span class="txt">${t('actionProfile')}</span>
                 </button>
                 <button type="button" class="tm-action bookmark" id="tm-bookmark-btn" aria-label="Bookmark" tabindex="0">
                     <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg></div>
-                    <span class="txt">收藏</span>
-                </button>
-                <button type="button" class="tm-action author" id="tm-author-btn" aria-label="Author" tabindex="0" style="display:none">
-                    <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></div>
-                    <span class="txt">主页</span>
-                </button>
-                <button type="button" class="tm-action comment" id="tm-comment-btn" aria-label="Comment" tabindex="0">
-                    <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18zM18 14H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/></svg></div>
-                    <span class="txt" id="tm-comment-count">评论</span>
+                    <span class="txt">${t('actionBookmark')}</span>
                 </button>
                 <button type="button" class="tm-action download" id="tm-download-btn" aria-label="Download" tabindex="0">
                     <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></div>
-                    <span class="txt">下载</span>
+                    <span class="txt">${t('actionDownload')}</span>
+                </button>
+                <button type="button" class="tm-action library" id="tm-library-btn" aria-label="My Library" tabindex="0">
+                    <div class="icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0-2-.9-2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg></div>
+                    <span class="txt">${t('myBookmarks')}</span>
                 </button>
             </div>
-            <div class="tm-speed-tip" id="tm-speed-tip">⏩ 长按加速中</div>
+            <div class="tm-speed-tip" id="tm-speed-tip">${t('speedTip')}</div>
             <div class="tm-swipe-mask" id="tm-swipe-mask"></div>
             
             <div class="tm-comment-panel" id="tm-comment-panel">
                 <div class="tm-comment-header">
-                    <span id="tm-comment-title">评论</span>
+                    <span id="tm-comment-title">${t('commentsTitle')}</span>
                     <button class="tm-comment-close" id="tm-comment-close" aria-label="Close comments">
                         <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
                     </button>
                 </div>
                 <div class="tm-comment-body" id="tm-comment-list"></div>
                 <div class="tm-comment-footer">
-                    <input type="text" class="tm-comment-input" id="tm-comment-input" placeholder="输入评论..." />
-                    <button class="tm-comment-send" id="tm-comment-send" disabled>发送</button>
+                    <input type="text" class="tm-comment-input" id="tm-comment-input" placeholder="${t('commentPlaceholder')}" />
+                    <button class="tm-comment-send" id="tm-comment-send" disabled>${t('send')}</button>
                 </div>
             </div>
 
             <div class="tm-author-panel" id="tm-author-panel">
                 <div class="tm-author-header">
-                    <span class="tm-author-title">博主主页 / 相关推荐</span>
+                    <span class="tm-author-title">${t('authorProfileTitle')}</span>
                     <button type="button" class="tm-author-close" id="tm-author-close" aria-label="Close author panel">
                         <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
                     </button>
@@ -160,23 +172,44 @@ export class TikTokMode {
                     </div>
                     <a href="#" class="tm-author-external-btn" id="tm-author-external-link" target="_blank" rel="noopener noreferrer">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
-                        在 X.com (Twitter) 查看该博主
+                        <span>${t('viewOnTwitter')}</span>
                     </a>
+                </div>
+                <div class="tm-author-batch-row" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.01);">
+                    <label class="bookmark-chk-label" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; color: var(--text-300);">
+                        <input type="checkbox" id="tm-author-batch-downloaded-chk" checked style="accent-color: var(--theme-accent); width: 14px; height: 14px; cursor: pointer;">
+                        ${t('includeDownloaded')}
+                    </label>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button type="button" class="bookmark-copy-btn" id="tm-author-select-all-btn" style="display: inline-flex; align-items: center; gap: 6px; background: var(--theme-accent-subtle) !important; border: 1px solid var(--theme-accent) !important; border-radius: 999px !important; padding: 6px 14px; font-size: 12px; font-weight: 600; color: var(--theme-accent) !important; cursor: pointer; font-family: var(--font-body); outline: none !important; transition: background 0.2s, color 0.2s;">
+                            全选
+                        </button>
+                        <button type="button" class="bookmark-copy-btn" id="tm-author-batch-copy-btn" style="display: none; align-items: center; gap: 6px; background: var(--theme-accent-subtle) !important; border: 1px solid var(--theme-accent) !important; border-radius: 999px !important; padding: 6px 14px; font-size: 12px; font-weight: 600; color: var(--theme-accent) !important; cursor: pointer; font-family: var(--font-body); outline: none !important; transition: background 0.2s, color 0.2s;">
+                            ${t('copyLinks')}
+                        </button>
+                        <button type="button" class="bookmark-copy-btn" id="tm-author-cancel-select-btn" style="display: none; align-items: center; gap: 6px; background: rgba(255,255,255,0.08) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 999px !important; padding: 6px 14px; font-size: 12px; font-weight: 600; color: var(--text-200) !important; cursor: pointer; font-family: var(--font-body); outline: none !important; transition: background 0.2s, color 0.2s;">
+                            取消
+                        </button>
+                    </div>
                 </div>
                 <div class="tm-author-videos-grid" id="tm-author-videos-grid"></div>
             </div>
         `;
+
         this.modal.appendChild(this.uiLayer);
 
         this.progressFill = this.uiLayer.querySelector('#tm-progress-fill') as HTMLElement;
         this.timeText = this.uiLayer.querySelector('#tm-time') as HTMLElement;
         this.titleText = this.uiLayer.querySelector('#tm-title') as HTMLElement;
+        this.authorText = this.uiLayer.querySelector('#tm-author-name') as HTMLElement;
 
         this.pool.onDataAdded(() => {
             if (this.isOpen) {
                 this.updateCountUI();
             }
         });
+
+        this.setupIdleTracker();
     }
 
     public init() {
@@ -317,6 +350,13 @@ export class TikTokMode {
                 return;
             }
 
+            // Horizontal swipe right (deltaX > 60) -> Close modal
+            if (deltaX > 60 && Math.abs(deltaY) < 60) {
+                this.vl.updateTransforms(this.currentIndex, 0);
+                this.closeModal();
+                return;
+            }
+
             this.vl.setTransition(true);
             
             if (deltaY < -70) {
@@ -392,23 +432,6 @@ export class TikTokMode {
             }
         });
 
-        const likeBtn = this.uiLayer.querySelector('#tm-like-btn')!;
-        likeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const list = this.pool.getDataPool();
-            if (!list.length) return;
-            const id = String(list[this.currentIndex].id);
-            if (this.likes.has(id)) {
-                this.likes.delete(id);
-                likeBtn.classList.remove('active');
-            } else {
-                this.likes.add(id);
-                likeBtn.classList.add('active');
-                collector.trackLike(id);
-            }
-            saveGM(STORAGE_KEYS.LIKES, Array.from(this.likes));
-        });
-
         const bookmarkBtn = this.uiLayer.querySelector('#tm-bookmark-btn')!;
         bookmarkBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -418,25 +441,54 @@ export class TikTokMode {
             const id = String(item.id);
             if (this.bookmarks.has(id)) {
                 this.bookmarks.delete(id);
+                this.bookmarksList = this.bookmarksList.filter(b => b.id !== id);
                 bookmarkBtn.classList.remove('active');
                 collector.trackBookmark(id, false);
             } else {
                 this.bookmarks.add(id);
+                const activeAdapter = AdapterManager.getInstance().getActiveAdapter();
+                const currentSiteKey = activeAdapter ? activeAdapter.constructor.name.replace('Adapter', '').toLowerCase() : '';
+                
+                const bookmarkItem: BookmarkItem = {
+                    bookmarkTime: Date.now(),
+                    authorId: item.tweet_account || '',
+                    videoUrl: item.originalUrl || item.url || '',
+                    tweetTitle: item.title || '',
+                    currentRankingSite: currentSiteKey,
+                    id: id,
+                    url_cd: item.url_cd || '',
+                    thumbnail: item.thumbnail || '',
+                    duration: item.duration || 0,
+                    url: item.url || '',
+                    pv: item.pv || 0
+                };
+                this.bookmarksList.push(bookmarkItem);
                 bookmarkBtn.classList.add('active');
                 collector.trackBookmark(id, true);
             }
-            saveJSON(STORAGE_KEYS.BOOKMARKS, Array.from(this.bookmarks));
+            saveGM(STORAGE_KEYS.BOOKMARKS_V2, this.bookmarksList);
         });
 
+        const libraryBtn = this.uiLayer.querySelector('#tm-library-btn');
+        if (libraryBtn) {
+            libraryBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.closeModal();
+                if (this.onLibraryClickCallback) {
+                    this.onLibraryClickCallback();
+                }
+            });
+        }
+
         // M2-4: 评论面板逻辑
-        const commentBtn = this.uiLayer.querySelector('#tm-comment-btn')!;
+        const commentBtn = this.uiLayer.querySelector('#tm-comment-btn');
         const commentPanel = this.uiLayer.querySelector('#tm-comment-panel')!;
         const commentClose = this.uiLayer.querySelector('#tm-comment-close')!;
         const commentList = this.uiLayer.querySelector('#tm-comment-list')!;
         const commentInput = this.uiLayer.querySelector('#tm-comment-input') as HTMLInputElement;
         const commentSend = this.uiLayer.querySelector('#tm-comment-send') as HTMLButtonElement;
 
-        commentBtn.addEventListener('click', (e) => {
+        commentBtn?.addEventListener('click', (e) => {
             e.stopPropagation();
             commentPanel.classList.add('active');
             this.loadComments();
@@ -452,6 +504,154 @@ export class TikTokMode {
         authorClose.addEventListener('click', () => {
             authorPanel.classList.remove('active');
         });
+
+        // Swipe right to close author panel
+        let startX_author = 0;
+        let startY_author = 0;
+        authorPanel.addEventListener('touchstart', (e: any) => {
+            startX_author = e.touches[0].clientX;
+            startY_author = e.touches[0].clientY;
+        }, { passive: true });
+
+        authorPanel.addEventListener('touchend', (e: any) => {
+            const deltaX = e.changedTouches[0].clientX - startX_author;
+            const deltaY = e.changedTouches[0].clientY - startY_author;
+            if (deltaX > 60 && Math.abs(deltaY) < 60) {
+                authorPanel.classList.remove('active');
+            }
+        }, { passive: true });
+
+        // ── 播放列表返回按钮 ──
+        const backBtn = this.uiLayer.querySelector('#tm-back-playlist-btn')!;
+        backBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.restorePlaylist();
+        });
+
+        // ── 博主批量选择与复制逻辑 ──
+        const authorCopyBtn = this.uiLayer.querySelector('#tm-author-batch-copy-btn') as HTMLButtonElement | null;
+        const selectAllBtn = this.uiLayer.querySelector('#tm-author-select-all-btn') as HTMLButtonElement | null;
+        const cancelBtn = this.uiLayer.querySelector('#tm-author-cancel-select-btn') as HTMLButtonElement | null;
+
+
+        selectAllBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const gridEl = this.uiLayer.querySelector('#tm-author-videos-grid') as HTMLElement;
+            if (!gridEl) return;
+
+            gridEl.querySelectorAll('.tm-author-video-card').forEach(card => {
+                let chk = card.querySelector('.tm-author-select-chk') as HTMLInputElement | null;
+                if (!chk) {
+                    chk = document.createElement('input');
+                    chk.type = 'checkbox';
+                    chk.className = 'tm-author-select-chk';
+                    chk.checked = true;
+                    chk.style.cssText = 'position:absolute;top:4px;left:4px;z-index:3;width:16px;height:16px;accent-color:var(--theme-accent);cursor:pointer;';
+                    card.appendChild(chk);
+                } else {
+                    chk.checked = true;
+                    chk.style.display = 'block';
+                }
+            });
+
+            if (selectAllBtn) selectAllBtn.style.display = 'none';
+            if (authorCopyBtn) authorCopyBtn.style.display = 'inline-flex';
+            if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+        });
+
+        cancelBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const gridEl = this.uiLayer.querySelector('#tm-author-videos-grid') as HTMLElement;
+            if (gridEl) {
+                gridEl.querySelectorAll('.tm-author-select-chk').forEach(chk => {
+                    (chk as HTMLElement).style.display = 'none';
+                });
+            }
+            if (selectAllBtn) selectAllBtn.style.display = 'inline-flex';
+            if (authorCopyBtn) authorCopyBtn.style.display = 'none';
+            if (cancelBtn) cancelBtn.style.display = 'none';
+        });
+
+        authorCopyBtn?.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!this.currentAuthorVideos.length) return;
+
+            const gridEl = this.uiLayer.querySelector('#tm-author-videos-grid') as HTMLElement;
+            if (!gridEl) return;
+
+            const selectedIds = new Set<string>();
+            gridEl.querySelectorAll('.tm-author-video-card').forEach(card => {
+                const chk = card.querySelector('.tm-author-select-chk') as HTMLInputElement;
+                if (chk && chk.checked) {
+                    const id = card.getAttribute('data-id');
+                    if (id) selectedIds.add(id);
+                }
+            });
+
+            const links: string[] = [];
+            const copiedIds: string[] = [];
+            selectedIds.forEach(id => {
+                const video = this.currentAuthorVideos.find(v => v.id === id);
+                if (video) {
+                    const url = video.originalUrl || video.url || '';
+                    if (url) links.push(url);
+                    copiedIds.push(video.id);
+                }
+            });
+
+            if (links.length === 0) return;
+
+            const linksText = links.join('\n');
+            try {
+                await navigator.clipboard.writeText(linksText);
+
+                // Temporary visual feedback
+                const originalText = authorCopyBtn.textContent;
+                authorCopyBtn.textContent = t('copied');
+                authorCopyBtn.style.setProperty('background', 'rgba(46, 213, 115, 0.15)', 'important');
+                authorCopyBtn.style.setProperty('border-color', '#2ed573', 'important');
+                authorCopyBtn.style.setProperty('color', '#2ed573', 'important');
+
+                setTimeout(() => {
+                    authorCopyBtn.textContent = originalText;
+                    authorCopyBtn.style.removeProperty('background');
+                    authorCopyBtn.style.removeProperty('border-color');
+                    authorCopyBtn.style.removeProperty('color');
+                }, 1500);
+
+                const { showConfirmModal } = await import('../utils/Dom');
+                showConfirmModal(
+                    '标记已下载',
+                    `已复制 ${links.length} 个视频链接。是否将这些视频标记为已下载？`,
+                    () => {
+                        const downloaded = new Set(loadGM(STORAGE_KEYS.DOWNLOADED, []) as string[]);
+                        copiedIds.forEach(id => downloaded.add(id));
+                        saveGM(STORAGE_KEYS.DOWNLOADED, Array.from(downloaded));
+
+                        // Refresh author panel grid badges
+                        const downloadedSet = new Set(downloaded);
+                        gridEl.querySelectorAll('.tm-author-video-card').forEach(card => {
+                            const id = card.getAttribute('data-id') || '';
+                            if (downloadedSet.has(id)) {
+                                let badge = card.querySelector('.tm-downloaded-badge');
+                                if (!badge) {
+                                    badge = document.createElement('div');
+                                    badge.className = 'tm-downloaded-badge';
+                                    badge.innerHTML = '✓ 已下载';
+                                    card.appendChild(badge);
+                                }
+                            }
+                        });
+
+                        // Clear selection mode
+                        if (cancelBtn) cancelBtn.click();
+                    }
+                );
+            } catch (err) {
+                console.error('Failed to copy blogger links:', err);
+            }
+        });
+
 
         commentInput.addEventListener('input', () => {
             commentSend.disabled = !commentInput.value.trim();
@@ -522,6 +722,12 @@ export class TikTokMode {
                 a.rel = 'noopener';
                 a.click();
                 collector.trackDownload(String(item.id));
+
+                // Record download
+                const id = String(item.id);
+                const downloaded = new Set(loadGM(STORAGE_KEYS.DOWNLOADED, []) as string[]);
+                downloaded.add(id);
+                saveGM(STORAGE_KEYS.DOWNLOADED, Array.from(downloaded));
             }
         });
 
@@ -634,10 +840,11 @@ export class TikTokMode {
         updateVolIcon();
     }
 
-    public openModal(index: number) {
+    public openModal(index: number, startTime?: number) {
         this.isOpen = true;
         this.modal.style.display = 'block';
         this.currentIndex = index;
+        this.pendingStartTime = startTime || 0;
         
         this.vl.setTransition(false);
         this.vl.updateTransforms(this.currentIndex, 0);
@@ -647,10 +854,15 @@ export class TikTokMode {
         this.loadNode(this.currentIndex + 1);
 
         this.playCurrent();
+
+        // 预采集下一批视频详情和URL
+        this.pool.startPrefetching(this.currentIndex, 5, 800);
     }
 
     public closeModal() {
         if (this.preloadTimer) { clearTimeout(this.preloadTimer); this.preloadTimer = null; }
+        if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
+        this.modal.classList.remove('tm-idle');
         if (document.pictureInPictureElement) {
             document.exitPictureInPicture().catch(() => {});
         }
@@ -658,6 +870,15 @@ export class TikTokMode {
         this.modal.style.display = 'none';
         this.pauseAll();
         collector.flushSession();
+        this.pool.stopPrefetching();
+
+        // 还原/清除播放列表备份，隐藏返回按钮
+        this.backupCustomPool = null;
+        this.backupIndex = 0;
+        this.hasBackup = false;
+        const backBtn = this.uiLayer.querySelector('#tm-back-playlist-btn') as HTMLElement;
+        if (backBtn) backBtn.style.display = 'none';
+
         if (this.onCloseCallback) this.onCloseCallback();
     }
 
@@ -699,7 +920,29 @@ export class TikTokMode {
         if (this.currentIndex >= list.length - 5) {
             this.pool.fetchNextPage();
         }
+
+        // 预采集下一批视频详情和URL
+        this.pool.startPrefetching(this.currentIndex, 5, 800);
     }
+
+    private restorePlaylist() {
+        if (!this.hasBackup) return;
+
+        this.pool.setCustomDataPool(this.backupCustomPool);
+        const idx = this.backupIndex;
+
+        // Clear backup references
+        this.backupCustomPool = null;
+        this.backupIndex = 0;
+        this.hasBackup = false;
+
+        const backBtn = this.uiLayer.querySelector('#tm-back-playlist-btn') as HTMLElement;
+        if (backBtn) backBtn.style.display = 'none';
+
+        // Refresh playing modal
+        this.openModal(idx);
+    }
+
 
     private async loadNode(logicalIndex: number) {
         const list = this.pool.getDataPool();
@@ -781,21 +1024,17 @@ export class TikTokMode {
         const item = list[this.currentIndex];
         const videoId = String(item.id);
         
-        this.titleText.textContent = item.isDetailsLoaded ? (item.title || `@${item.tweet_account}`) : 'Loading...';
+        // Two-line layout updates
+        const cleanName = this.getCleanBloggerName(item.authorDisplayName || item.tweet_account || '');
+        if (this.authorText) {
+            this.authorText.textContent = cleanName;
+        }
+        this.titleText.textContent = item.isDetailsLoaded ? (item.title || '') : 'Loading...';
+        this.titleText.style.display = item.title ? '' : 'none';
         
         this.updateCountUI();
 
-        const likeCount = this.uiLayer.querySelector('#tm-like-count');
-        if (likeCount) likeCount.textContent = String(item.favorite || 0);
 
-        const likeBtn = this.uiLayer.querySelector('#tm-like-btn');
-        if (likeBtn) {
-            if (this.likes.has(videoId)) {
-                likeBtn.classList.add('active');
-            } else {
-                likeBtn.classList.remove('active');
-            }
-        }
 
         const bookmarkBtn = this.uiLayer.querySelector('#tm-bookmark-btn');
         if (bookmarkBtn) {
@@ -819,12 +1058,33 @@ export class TikTokMode {
         video.playbackRate = this.playbackRate;
         video.volume = this.isMuted ? 0 : this.volume;
         video.muted = this.isMuted;
+
+        const startTime = this.pendingStartTime || 0;
+        if (startTime > 0 && item.url && video.src === item.url) {
+            this.pendingStartTime = 0; // reset
+            if (video.readyState >= 1) {
+                video.currentTime = startTime;
+            } else {
+                const onMetadata = () => {
+                    video.currentTime = startTime;
+                    video.removeEventListener('loadedmetadata', onMetadata);
+                };
+                video.addEventListener('loadedmetadata', onMetadata);
+            }
+        }
+
         video.play().catch(e => console.log('Autoplay prevented', e));
         this.schedulePreload();
 
         const authorBtn = this.uiLayer.querySelector<HTMLButtonElement>('#tm-author-btn');
         if (authorBtn) {
             authorBtn.style.display = '';
+            
+            const btnText = authorBtn.querySelector('.txt');
+            if (btnText) {
+                btnText.textContent = cleanName || '博主';
+            }
+
             authorBtn.onclick = (e) => {
                 e.stopPropagation();
                 this.openAuthorPanel();
@@ -1074,6 +1334,14 @@ export class TikTokMode {
         const authorPanel = this.uiLayer.querySelector('#tm-author-panel')!;
         authorPanel.classList.add('active');
 
+        // Reset select mode in author panel
+        const selectAllBtn = this.uiLayer.querySelector('#tm-author-select-all-btn') as HTMLElement;
+        const authorCopyBtn = this.uiLayer.querySelector('#tm-author-batch-copy-btn') as HTMLElement;
+        const cancelBtn = this.uiLayer.querySelector('#tm-author-cancel-select-btn') as HTMLElement;
+        if (selectAllBtn) selectAllBtn.style.display = 'inline-flex';
+        if (authorCopyBtn) authorCopyBtn.style.display = 'none';
+        if (cancelBtn) cancelBtn.style.display = 'none';
+
         // Close comment panel if open
         const commentPanel = this.uiLayer.querySelector('#tm-comment-panel')!;
         commentPanel.classList.remove('active');
@@ -1117,18 +1385,22 @@ export class TikTokMode {
             
             // Fallback: If no author-specific videos are found, display the current dataPool items (as Related Videos)
             const videos = (result && result.posts && result.posts.length > 0) ? result.posts : list.slice(0, 15);
+            this.currentAuthorVideos = videos;
             
             if (videos.length === 0) {
                 gridEl.innerHTML = '<div class="tm-comment-empty">暂无相关视频</div>';
                 return;
             }
 
-            gridEl.innerHTML = videos.map((video) => {
+            const downloadedSet = new Set(loadGM(STORAGE_KEYS.DOWNLOADED, []) as string[]);
+            gridEl.innerHTML = videos.map((video, idx) => {
                 const durationStr = video.duration > 0 ? this.formatDuration(video.duration) : '';
+                const isDownloaded = downloadedSet.has(String(video.id));
                 return `
-                    <div class="tm-author-video-card" data-id="${video.id}">
+                    <div class="tm-author-video-card" data-id="${video.id}" data-index="${idx}" style="position: relative;">
                         <img src="${video.thumbnail}" alt="Thumbnail" loading="lazy" referrerpolicy="no-referrer" />
                         ${durationStr ? `<span class="duration">${durationStr}</span>` : ''}
+                        ${isDownloaded ? '<div class="tm-downloaded-badge">✓ 已下载</div>' : ''}
                     </div>
                 `;
             }).join('');
@@ -1137,35 +1409,44 @@ export class TikTokMode {
             gridEl.querySelectorAll('.tm-author-video-card').forEach(card => {
                 card.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    const chk = card.querySelector('.tm-author-select-chk') as HTMLInputElement | null;
+                    if (chk && chk.style.display !== 'none') {
+                        if (e.target !== chk) {
+                            chk.checked = !chk.checked;
+                        }
+                        return; // Do not play/navigate
+                    }
+
                     const targetId = card.getAttribute('data-id') || '';
                     if (!targetId) return;
 
                     // Close panel
                     authorPanel.classList.remove('active');
 
-                    // Find if the video is already in the dataPool
-                    const poolIdx = list.findIndex(v => v.id === targetId);
-                    if (poolIdx >= 0) {
-                        // If it's already in the pool, slide to it!
-                        const diff = poolIdx - this.currentIndex;
-                        if (diff !== 0) {
-                            this.navigate(diff);
-                        }
-                    } else {
-                        // If it's not in the pool, find it in the fetched author/related list
-                        const clickedVideo = videos.find(v => v.id === targetId);
-                        if (clickedVideo) {
-                            // Insert it after the current index and navigate to it!
-                            list.splice(this.currentIndex + 1, 0, clickedVideo);
-                            this.navigate(1);
-                        }
+                    // Back up current playlist before switching to author playlist
+                    if (!this.hasBackup) {
+                        this.backupCustomPool = this.pool.getCustomDataPool();
+                        this.backupIndex = this.currentIndex;
+                        this.hasBackup = true;
                     }
+
+                    // Show back button
+                    const backBtn = this.uiLayer.querySelector('#tm-back-playlist-btn') as HTMLElement;
+                    if (backBtn) backBtn.style.display = 'inline-flex';
+
+                    // Set custom pool to author videos
+                    this.pool.setCustomDataPool(this.currentAuthorVideos);
+
+                    const clickedIndex = videos.findIndex(v => v.id === targetId);
+                    this.openModal(clickedIndex >= 0 ? clickedIndex : 0);
                 });
             });
 
+
         } catch (err) {
             console.error('Failed to load author videos', err);
-            gridEl.innerHTML = '<div class="tm-comment-empty">加载视频失败</div>';
+            this.currentAuthorVideos = [];
+            gridEl.innerHTML = `<div class="tm-comment-empty">${t('loadError')}</div>`;
         }
     }
 
@@ -1177,5 +1458,92 @@ export class TikTokMode {
             return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
         }
         return `${m}:${String(s).padStart(2, '0')}`;
+    }
+
+    public retranslateUI() {
+        if (!this.uiLayer) return;
+        const commentTitle = this.uiLayer.querySelector('#tm-comment-title');
+        if (commentTitle) commentTitle.textContent = t('commentsTitle');
+
+        const commentInput = this.uiLayer.querySelector('#tm-comment-input') as HTMLInputElement;
+        if (commentInput) commentInput.placeholder = t('commentPlaceholder');
+
+        const commentSend = this.uiLayer.querySelector('#tm-comment-send');
+        if (commentSend) commentSend.textContent = t('send');
+
+        const authorTitle = this.uiLayer.querySelector('.tm-author-title');
+        if (authorTitle) authorTitle.textContent = t('authorProfileTitle');
+
+        const externalLinkSpan = this.uiLayer.querySelector('#tm-author-external-link span');
+        if (externalLinkSpan) externalLinkSpan.textContent = t('viewOnTwitter');
+
+        const speedTip = this.uiLayer.querySelector('#tm-speed-tip');
+        if (speedTip) speedTip.textContent = t('speedTip');
+
+        const bookmarkSpan = this.uiLayer.querySelector('#tm-bookmark-btn .txt');
+        if (bookmarkSpan) bookmarkSpan.textContent = t('actionBookmark');
+
+        const authorSpan = this.uiLayer.querySelector('#tm-author-btn .txt');
+        if (authorSpan) authorSpan.textContent = t('actionProfile');
+
+        const commentSpan = this.uiLayer.querySelector('#tm-comment-btn .txt');
+        if (commentSpan) commentSpan.textContent = t('commentsTitle');
+
+        const downloadSpan = this.uiLayer.querySelector('#tm-download-btn .txt');
+        if (downloadSpan) downloadSpan.textContent = t('actionDownload');
+    }
+
+    public onLibraryClick(cb: () => void) {
+        this.onLibraryClickCallback = cb;
+    }
+
+    private getCleanBloggerName(name: string): string {
+        if (!name) return '';
+        return name.replace(/的视频(空间)?$/g, '').trim();
+    }
+
+    private resetIdleTimer() {
+        if (!this.isOpen) return;
+        
+        const modal = this.modal;
+        modal.classList.remove('tm-idle');
+
+        if (this.idleTimer) {
+            clearTimeout(this.idleTimer);
+            this.idleTimer = null;
+        }
+
+        const video = this.getCurrentVideo();
+        const isPaused = video ? video.paused : true;
+
+        if (!isPaused) {
+            this.idleTimer = setTimeout(() => {
+                if (this.isOpen && video && !video.paused) {
+                    modal.classList.add('tm-idle');
+                }
+            }, 3000);
+        }
+    }
+
+    private setupIdleTracker() {
+        const events = ['mousemove', 'mousedown', 'touchstart', 'touchmove', 'keydown'];
+        events.forEach(evt => {
+            this.modal.addEventListener(evt, () => this.resetIdleTimer(), { passive: true });
+        });
+
+        // Recycled video play/pause event tracking
+        this.vl.getNodes().forEach(n => {
+            const v = n.querySelector('.tm-video') as HTMLVideoElement;
+            if (v) {
+                v.addEventListener('play', () => this.resetIdleTimer());
+                v.addEventListener('pause', () => {
+                    if (this.idleTimer) {
+                        clearTimeout(this.idleTimer);
+                        this.idleTimer = null;
+                    }
+                    this.modal.classList.remove('tm-idle');
+                });
+            }
+        });
     }
 }

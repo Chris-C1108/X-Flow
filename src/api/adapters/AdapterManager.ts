@@ -8,6 +8,7 @@ import { XiaoHuangNiaoAdapter } from './XiaoHuangNiaoAdapter';
 import { TwivideoAdapter } from './TwivideoAdapter';
 import { TwidougaAdapter } from './TwidougaAdapter';
 import { JavtwiAdapter } from './JavtwiAdapter';
+import { UraakaTimesAdapter } from './UraakaTimesAdapter';
 
 export class AdapterManager {
     private static instance: AdapterManager;
@@ -25,7 +26,8 @@ export class AdapterManager {
             new XiaoHuangNiaoAdapter(),
             new TwivideoAdapter(),
             new TwidougaAdapter(),
-            new JavtwiAdapter()
+            new JavtwiAdapter(),
+            new UraakaTimesAdapter()
         ];
         
         // Detect active adapter
