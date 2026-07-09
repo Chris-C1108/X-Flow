@@ -1,0 +1,146 @@
+[
+    {
+        "_comment": "=== X-Flow Content Blocker Rules ===",
+        "_comment2": "用于 Stay Browser 自定义 blocklist",
+        "_comment3": "安装方法: Stay Browser → 设置 → 内容拦截器 → 导入自定义规则"
+    },
+
+    {
+        "_comment": "--- 主要广告/恶意域名 ---"
+    },
+    {
+        "trigger": {
+            "url-filter": ".*",
+            "if-domain": ["*twitter-ero-video-ranking.com", "*x-ero-anime.com"],
+            "resource-type": ["script", "raw"],
+            "url-filter-is-case-insensitive": true
+        },
+        "action": {
+            "type": "block"
+        },
+        "_comment": "Block all third-party scripts on target sites (fallback)"
+    },
+
+    {
+        "trigger": {
+            "url-filter": "navyrecentuproot\\.com"
+        },
+        "action": {
+            "type": "block"
+        },
+        "_comment": "主要广告分发域名"
+    },
+    {
+        "trigger": {
+            "url-filter": "earmuffpostnasalrisotto\\.com"
+        },
+        "action": {
+            "type": "block"
+        },
+        "_comment": "广告跟踪域名"
+    },
+    {
+        "trigger": {
+            "url-filter": "bmmadspay\\.com"
+        },
+        "action": {
+            "type": "block"
+        },
+        "_comment": "点击上报域名"
+    },
+    {
+        "trigger": {
+            "url-filter": "hsbj6zow\\.o92kd83ncv\\.cc"
+        },
+        "action": {
+            "type": "block"
+        },
+        "_comment": "iframe 劫持域名"
+    },
+    {
+        "trigger": {
+            "url-filter": "theoriaemodins\\.cyou"
+        },
+        "action": {
+            "type": "block"
+        },
+        "_comment": "恶意资源加载域名"
+    },
+    {
+        "trigger": {
+            "url-filter": "drtacs\\.club"
+        },
+        "action": {
+            "type": "block"
+        },
+        "_comment": "广告落地页域名"
+    },
+    {
+        "trigger": {
+            "url-filter": "3xyy\\.com"
+        },
+        "action": {
+            "type": "block"
+        },
+        "_comment": "重定向中转域名"
+    },
+    {
+        "trigger": {
+            "url-filter": "hai8g\\.com"
+        },
+        "action": {
+            "type": "block"
+        },
+        "_comment": "备用广告域名"
+    },
+    {
+        "trigger": {
+            "url-filter": "jiankongqi1\\.com"
+        },
+        "action": {
+            "type": "block"
+        },
+        "_comment": "监控跟踪域名"
+    },
+
+    {
+        "_comment": "--- 宿主站自身的劫持脚本 ---"
+    },
+    {
+        "trigger": {
+            "url-filter": ".*/on\\.js",
+            "if-domain": ["*twitter-ero-video-ranking.com", "*x-ero-anime.com"],
+            "resource-type": ["script"]
+        },
+        "action": {
+            "type": "block"
+        },
+        "_comment": "主劫持脚本入口 on.js"
+    },
+    {
+        "trigger": {
+            "url-filter": ".*/zbs\\.kek\\.js",
+            "if-domain": ["*twitter-ero-video-ranking.com", "*x-ero-anime.com"],
+            "resource-type": ["script"]
+        },
+        "action": {
+            "type": "block"
+        },
+        "_comment": "备用劫持脚本 zbs.kek.js"
+    },
+
+    {
+        "_comment": "--- iframe 注入拦截 ---"
+    },
+    {
+        "trigger": {
+            "url-filter": ".*",
+            "if-domain": ["*twitter-ero-video-ranking.com", "*x-ero-anime.com"],
+            "resource-type": ["popup"]
+        },
+        "action": {
+            "type": "block"
+        },
+        "_comment": "阻止所有弹窗"
+    }
+]
