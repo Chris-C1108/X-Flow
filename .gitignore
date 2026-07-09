@@ -22,10 +22,13 @@ POST.md
 
 # Agent related
 .agent/
-.agents/
-! .agents/knowledge/
-! .agents/AGENTS.md
-! .agents/dev-docs/
-! .agents/todo/
+.agents/**
+!.agents/
+!.agents/knowledge/
+!.agents/knowledge/**
+!.agents/dev-docs/
+!.agents/dev-docs/**
+!.agents/todo/
+!.agents/todo/**
 # Added by code-review-graph
 .code-review-graph/

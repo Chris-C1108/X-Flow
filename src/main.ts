@@ -128,17 +128,15 @@ window.requestAnimationFrame = () => 0;
 (window as any).__XFLOW_IS_ANIME__ = window.location.hostname.includes('anime');
 
 // ═══════════════════════════════════════════════════════════════
-// Layer 2: Nuclear — document.open() + CSP 重写整个文档
-// document.open() 会:
-//   1. 中止当前 HTML parser（未解析的 <script> 不会执行）
-//   2. 清空整个文档树
-//   3. 将文档置于 "writing" 状态
-// CSP meta 对新文档生效，浏览器层面阻止第三方脚本
+// Layer 2: Cleansing & Rewrite
+// On desktop: Use document.open() + document.write() + document.close() to abort parser and wipe document.
+// On mobile: document.open() clears active URL and forces address bar to about:blank.
+//            So we use window.stop() + document.documentElement.innerHTML replacement instead.
 // ═══════════════════════════════════════════════════════════════
-document.open();
-document.write([
-    '<!DOCTYPE html>',
-    '<html lang="zh-CN">',
+const _isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                  (typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 0);
+
+const _htmlContent = [
     '<head>',
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">',
@@ -198,10 +196,16 @@ document.write([
             '@keyframes xf-glow{0%{opacity:0.6;transform:scale(0.9)}100%{opacity:1;transform:scale(1.1)}}',
         '</style>',
     '</div>',
-    '</body>',
-    '</html>',
-].join(''));
-document.close();
+    '</body>'
+].join('');
+
+if (_isMobile) {
+    document.documentElement.innerHTML = _htmlContent;
+} else {
+    document.open();
+    document.write('<!DOCTYPE html><html lang="zh-CN">' + _htmlContent + '</html>');
+    document.close();
+}
 
 // ═══════════════════════════════════════════════════════════════
 // Layer 3: Post-write 恢复与验证

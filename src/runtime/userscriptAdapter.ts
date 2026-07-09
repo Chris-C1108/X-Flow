@@ -2,8 +2,10 @@ import type { HttpRequestOptions, HttpResponse, RuntimeAdapter } from './adapter
 
 const getOrigin = () => {
     const frozen = (window as any).__XFLOW_ORIGIN__;
-    if (typeof frozen === 'string' && frozen) return frozen;
-    return window.location.origin || 'https://twihub.net';
+    if (typeof frozen === 'string' && frozen && frozen !== 'null' && !frozen.includes('about:blank')) return frozen;
+    const current = window.location.origin;
+    if (current && current !== 'null' && !current.includes('about:blank')) return current;
+    return 'https://twihub.net';
 };
 
 const parseStorageValue = <T>(raw: unknown, fallback: T): T => {

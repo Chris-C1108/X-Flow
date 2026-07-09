@@ -1,7 +1,7 @@
 {
   "name": "x-flow",
   "private": true,
-  "version": "6.1.0",
+  "version": "6.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -12,6 +12,7 @@
     "rollup-plugin-obfuscator": "^1.1.0",
     "typescript": "^5.2.2",
     "vite": "^5.0.0",
-    "vite-plugin-monkey": "^4.0.0"
+    "vite-plugin-monkey": "^4.0.0",
+    "ws": "^8.21.0"
   }
 }

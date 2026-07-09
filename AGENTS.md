@@ -191,6 +191,8 @@ npm run build            # 构建生产 .user.js 到 dist/
 | 19 | CSP, Content-Security-Policy, meta, document.open, document.write, 第三方脚本, frame-src, script-src | 【TM-ONLY】 ✅ The winning pattern: `document.open()` + CSP meta in clean document; GM API unaffected by CSP | [csp_meta_document_open_solution.md](.agents/knowledge/csp_meta_document_open_solution.md) |
 | 23 | appRoot, xflow-app-root, dataset null, document.write missing node, Cannot read properties of null | 【TM-ONLY】 Self-heal `#xflow-app-root` inside Sandbox before touching `.dataset` or Layout init | [app_root_self_heal_after_document_write.md](.agents/knowledge/app_root_self_heal_after_document_write.md) |
 | 28 | fetch, GET, TypeError, credentials, Cloudflare, WAF, Turnstile, cf_clearance, same-origin | 【TM-ONLY】 Add `credentials: 'include'` and omit `body` entirely on GET/HEAD fetch calls | [same_origin_fetch_credentials.md](.agents/knowledge/same_origin_fetch_credentials.md) |
+| 30 | about:blank, mobile, document.open, network interruption, 移动端, 网络链路中断, null origin | 【TM-ONLY】 Mobile WebKit/Safari resets URL to about:blank on `document.open()`. Bypass with innerHTML. | [mobile_about_blank_takeover_bypass.md](.agents/knowledge/mobile_about_blank_takeover_bypass.md) |
+
 
 ### 🛠️ Build & Syntax
 
