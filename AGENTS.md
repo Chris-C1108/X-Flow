@@ -103,6 +103,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 
 | 版本 | 设计/计划文档 | 当前阶段 | 整体进度 |
 |------|---------------|----------|----------|
+| **v8.3.0** | [implementation_plan.md](file:///Users/chen/.gemini/antigravity/brain/be08b881-8f93-49ed-a3fd-413ed10a1053/implementation_plan.md) | M4 — 播放器缓冲延迟与连接调度优化 | ✅ 完成 |
 | **v8.2.0** | [implementation_plan.md](file:///C:/Users/chenahao/.gemini/antigravity/brain/37193574-d828-44d7-bbbd-c457e589c071/implementation_plan.md) | M1 — 批量下载与列表播放逻辑升级 | ✅ 完成 |
 | **v8.1.0** | [implementation_plan.md](file:///C:/Users/chenahao/.gemini/antigravity/brain/b3c02987-a9c5-463b-b6e1-3086cb8e9e6a/implementation_plan.md) | M1 — UI/UX 13项缺陷与功能升级 | ✅ 完成 |
 | **v8.0.0** | [implementation_plan.md](file:///C:/Users/chenahao/.gemini/antigravity/brain/314368e0-b730-47ea-be57-bafe0048377e/implementation_plan.md) | M1 — 适配器与作者面板开发 | ✅ 完成 |

@@ -191,8 +191,8 @@
 
         /* Hover-to-play video overlay on media cards */
         .card-hover-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 5; border-radius: inherit; background: #000; opacity: 0; transition: opacity 0.4s ease; pointer-events: none; }
-        .media-card.hover-playing .card-hover-video { opacity: 1; }
-        .media-card.hover-playing .card-img { opacity: 0.2; }
+        .media-card.hover-playing.video-playing .card-hover-video { opacity: 1; }
+        .media-card.hover-playing.video-playing .card-img { opacity: 0.2; }
         .media-card.hover-playing .card-overlay { opacity: 0.5; }
         /* Keep info/rank/play-icon above the video — do NOT override position, they are already position:absolute */
         .media-card .card-rank, .media-card .card-info, .media-card .card-play-icon { z-index: 6; }

@@ -1,4 +1,5 @@
 import { log } from '../utils/Logger';
+import { getRuntimeAdapter } from '../runtime';
 
 export interface QueryState {
     isAnimeOnly: boolean;
@@ -17,6 +18,7 @@ export interface CacheEntry {
 }
 
 const DEFAULT_TTL = 5 * 60_000; // 5 minutes
+const STORAGE_CACHE_PREFIX = 'xflow_cache_v3_';
 
 export class CacheManager {
     private store = new Map<string, CacheEntry>();
@@ -47,10 +49,30 @@ export class CacheManager {
 
     public get(q: QueryState, ttlMs: number = DEFAULT_TTL): CacheEntry | null {
         const key = this.makeKey(q);
-        const entry = this.store.get(key);
+        
+        // 1. Try memory cache first
+        let entry = this.store.get(key);
+        
+        // 2. Try persistent cache fallback
+        if (!entry) {
+            try {
+                const runtime = getRuntimeAdapter();
+                entry = runtime.storage.get<CacheEntry | null>(STORAGE_CACHE_PREFIX + key, null);
+                if (entry) {
+                    log(`CacheManager: Storage HIT for ${key}`);
+                    this.store.set(key, entry);
+                }
+            } catch (err) {
+                log(`CacheManager: Failed to read persistent cache: ${err}`);
+            }
+        }
+
         if (!entry) return null;
+
+        // Expiration check
         if (Date.now() - entry.updatedAt > ttlMs) {
-            this.store.delete(key);
+            log(`CacheManager: Cache expired for ${key}`);
+            this.delete(q);
             return null;
         }
         return entry;
@@ -58,8 +80,28 @@ export class CacheManager {
 
     public set(q: QueryState, entry: CacheEntry): void {
         const key = this.makeKey(q);
-        log(`Cache SET: ${key} (${entry.items.length} items, nextCursor=${entry.nextCursor})`);
-        this.store.set(key, { ...entry, updatedAt: Date.now() });
+        const newEntry = { ...entry, updatedAt: Date.now() };
+        
+        // Update memory
+        this.store.set(key, newEntry);
+        
+        // Update persistent storage
+        try {
+            const runtime = getRuntimeAdapter();
+            runtime.storage.set(STORAGE_CACHE_PREFIX + key, newEntry);
+            log(`CacheManager: Persisted cache for ${key} (${entry.items.length} items)`);
+        } catch (err) {
+            log(`CacheManager: Failed to write persistent cache: ${err}`);
+        }
+    }
+
+    public delete(q: QueryState): void {
+        const key = this.makeKey(q);
+        this.store.delete(key);
+        try {
+            const runtime = getRuntimeAdapter();
+            runtime.storage.set(STORAGE_CACHE_PREFIX + key, null);
+        } catch (_) {}
     }
 
     public hasFresh(q: QueryState, ttlMs?: number): boolean {

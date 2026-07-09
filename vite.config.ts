@@ -54,6 +54,8 @@ export default defineConfig(({ command }) => ({
         author: 'Chris_C',
         license: 'Apache-2.0',
         match: [
+          '*://pektino.com/*',
+          '*://*.pektino.com/*',
           '*://x-ero-anime.com/*',
           '*://*.x-ero-anime.com/*',
           '*://truvaze.com/*',
@@ -82,6 +84,7 @@ export default defineConfig(({ command }) => ({
           '*://*.uraaka-times.com/*'
         ],
         connect: [
+          'pektino.com',
           'x-ero-anime.com',
           'video.twimg.com',
           'pbs.twimg.com',

@@ -18,9 +18,7 @@ export class TwiHubAdapter implements SiteAdapter {
     };
 
     matches(hostname: string): boolean {
-        return hostname.includes('twihub.net') || 
-               hostname.includes('x-ero-anime.com') || 
-               hostname.includes('truvaze.com');
+        return hostname.includes('twihub.net');
     }
 
     getFilterGroups(isAnime: boolean): FilterGroup[] {

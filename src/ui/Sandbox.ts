@@ -33,6 +33,21 @@ export class Sandbox {
     public async initialize() {
         if (this.appRoot) return;
 
+        // ── 注销 host Service Worker，阻止其对 twimg 视频流请求的限速和拦截 ──
+        if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+            try {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                for (const reg of registrations) {
+                    const success = await reg.unregister();
+                    if (success) {
+                        log('Sandbox: Unregistered host Service Worker successfully');
+                    }
+                }
+            } catch (err) {
+                console.warn('X-Flow: Failed to clean host Service Workers', err);
+            }
+        }
+
         try {
             // iOS Safari: document.baseURI null → Vite URL 构造崩溃
             try {
@@ -55,7 +70,7 @@ export class Sandbox {
             style.textContent = appCssText;
             document.head.appendChild(style);
 
-            // 注入字体
+            // 注入字体 (Asynchronous load to prevent blocking API request)
             const fontFrag = document.createDocumentFragment();
             const preconnect1 = document.createElement('link');
             preconnect1.rel = 'preconnect';
@@ -71,16 +86,17 @@ export class Sandbox {
             const fontLink = document.createElement('link');
             fontLink.rel = 'stylesheet';
             fontLink.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Syne:wght@500;700;800&display=swap';
+            fontLink.media = 'print';
+            fontLink.onload = function() {
+                // @ts-ignore
+                this.media = 'all';
+            };
             fontFrag.appendChild(fontLink);
 
             document.head.appendChild(fontFrag);
 
             // ── Splash 进度推进 ──────────────────────────────────────
             this.splashProgress(30);
-
-            // ── 并行：后台网络检测 + Layout 初始化 ───────────────────
-            // 网络检测完全不阻塞主流程，结果出来后在主界面插 banner
-            void this.checkNetworkInBackground();
 
             // 启动业务
             this.splashProgress(60);
@@ -89,6 +105,11 @@ export class Sandbox {
             log('Sandbox: document.open() clean slate ready');
             const layout = new Layout();
             layout.init(this.appRoot);
+
+            // ── 后台网络检测：延迟 3 秒，避免抢占首屏 API 带宽 ───────────────────
+            setTimeout(() => {
+                void this.checkNetworkInBackground();
+            }, 3000);
 
             // Layout 渲染完成
             this.splashProgress(100);

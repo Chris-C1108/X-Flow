@@ -849,14 +849,19 @@ export class TikTokMode {
         this.vl.setTransition(false);
         this.vl.updateTransforms(this.currentIndex, 0);
         
-        this.loadNode(this.currentIndex - 1);
         this.loadNode(this.currentIndex);
-        this.loadNode(this.currentIndex + 1);
-
         this.playCurrent();
 
-        // 预采集下一批视频详情和URL
-        this.pool.startPrefetching(this.currentIndex, 5, 800);
+        // Defer neighboring node loads and background prefetching to avoid bandwidth competition
+        if (this.preloadTimer) clearTimeout(this.preloadTimer);
+        this.preloadTimer = setTimeout(() => {
+            if (this.isOpen) {
+                this.loadNode(this.currentIndex - 1);
+                this.loadNode(this.currentIndex + 1);
+                this.schedulePreload();
+                this.pool.startPrefetching(this.currentIndex, 5, 800);
+            }
+        }, 1500);
     }
 
     public closeModal() {
@@ -911,7 +916,16 @@ export class TikTokMode {
         this.vl.setTransition(true);
         this.vl.updateTransforms(this.currentIndex, 0);
 
-        this.loadNode(this.currentIndex + delta); 
+        // Defer neighboring node loads and background prefetching to avoid bandwidth competition
+        if (this.preloadTimer) clearTimeout(this.preloadTimer);
+        this.preloadTimer = setTimeout(() => {
+            if (this.isOpen) {
+                this.loadNode(this.currentIndex + delta);
+                this.loadNode(this.currentIndex - delta);
+                this.schedulePreload();
+                this.pool.startPrefetching(this.currentIndex, 5, 800);
+            }
+        }, 1500);
 
         setTimeout(() => {
             if (this.isOpen) this.playCurrent();
@@ -920,9 +934,6 @@ export class TikTokMode {
         if (this.currentIndex >= list.length - 5) {
             this.pool.fetchNextPage();
         }
-
-        // 预采集下一批视频详情和URL
-        this.pool.startPrefetching(this.currentIndex, 5, 800);
     }
 
     private restorePlaylist() {
@@ -1002,6 +1013,16 @@ export class TikTokMode {
                     video.src = resolvedItem.url;
                 }
                 this.playCurrent();
+
+                // If resolved asynchronously, defer neighbor loads and preloading
+                if (this.preloadTimer) clearTimeout(this.preloadTimer);
+                this.preloadTimer = setTimeout(() => {
+                    if (this.isOpen) {
+                        this.loadNode(this.currentIndex - 1);
+                        this.loadNode(this.currentIndex + 1);
+                        this.schedulePreload();
+                    }
+                }, 1500);
             } else {
                 if (resolvedItem.url && video.src !== resolvedItem.url && video.preload === 'auto') {
                     video.src = resolvedItem.url;
@@ -1074,7 +1095,6 @@ export class TikTokMode {
         }
 
         video.play().catch(e => console.log('Autoplay prevented', e));
-        this.schedulePreload();
 
         const authorBtn = this.uiLayer.querySelector<HTMLButtonElement>('#tm-author-btn');
         if (authorBtn) {

@@ -156,6 +156,7 @@ export class Layout {
         if (this.isBookmarksView) {
             const sites = [
                 { id: 'all', label: '全部' },
+                { id: 'pektino', label: 'Pektino' },
                 { id: 'twihub', label: 'TwiHub' },
                 { id: 'twikeep', label: 'TwiKeep' },
                 { id: 'twiidol', label: 'TwiIdol' },
@@ -728,6 +729,13 @@ export class Layout {
                 video.loop = true;
                 video.playsInline = true;
                 video.preload = 'auto';
+
+                const onPlay = () => {
+                    card.classList.add('video-playing');
+                };
+                video.addEventListener('playing', onPlay, { once: true });
+                video.addEventListener('timeupdate', onPlay, { once: true });
+
                 card.appendChild(video);
                 this.hoverVideo = video;
                 video.play().catch(() => {/* autoplay blocked */ });
@@ -782,6 +790,13 @@ export class Layout {
                 video.autoplay = true;
                 video.loop = true;
                 video.playsInline = true;
+
+                const onPlay = () => {
+                    card.classList.add('video-playing');
+                };
+                video.addEventListener('playing', onPlay, { once: true });
+                video.addEventListener('timeupdate', onPlay, { once: true });
+
                 card.appendChild(video);
                 this.hoverVideo = video;
                 video.play().catch(() => { });
@@ -807,7 +822,21 @@ export class Layout {
             gridContainer.addEventListener('touchend', (e: TouchEvent) => {
                 if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
                 if (this.hoverCard) {
-                    this.clearActiveHoverVideo();
+                    const card = (e.target as HTMLElement).closest('.media-card') as HTMLElement | null;
+                    if (card && card === this.hoverCard) {
+                        const indexAttr = card.getAttribute('data-index');
+                        if (indexAttr) {
+                            const index = parseInt(indexAttr);
+                            let startTime = 0;
+                            if (this.hoverVideo) {
+                                startTime = this.hoverVideo.currentTime;
+                            }
+                            this.clearActiveHoverVideo();
+                            this.player.openModal(index, startTime);
+                        }
+                    } else {
+                        this.clearActiveHoverVideo();
+                    }
                     e.preventDefault();
                 }
             }, { passive: false });
@@ -1072,7 +1101,7 @@ export class Layout {
             this.hoverVideo = null;
         }
         if (this.hoverCard) {
-            this.hoverCard.classList.remove('hover-playing', 'auto-playing-no1');
+            this.hoverCard.classList.remove('hover-playing', 'auto-playing-no1', 'video-playing');
             this.hoverCard = null;
         }
     }
@@ -1133,6 +1162,12 @@ export class Layout {
         video.playsInline = true;
         video.preload = 'auto';
 
+        const onPlay = () => {
+            card.classList.add('video-playing');
+        };
+        video.addEventListener('playing', onPlay, { once: true });
+        video.addEventListener('timeupdate', onPlay, { once: true });
+
         card.appendChild(video);
         this.hoverVideo = video;
         this.hoverCard = card;
@@ -1181,7 +1216,6 @@ export class Layout {
                 <div class="card-overlay"></div>
                 <div class="card-rank ${rankClass}">No.${rankNum}</div>
                 ${isDownloaded ? '<div class="card-downloaded-badge">✓ 已下载</div>' : ''}
-                <div class="card-play-icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
                 <div class="card-info">
                     <div class="card-author">${escapeHtml(this.getCleanBloggerName(item.authorDisplayName || item.tweet_account || ''))}</div>
                     ${item.title ? `<div class="card-title">${escapeHtml(item.title)}</div>` : ''}

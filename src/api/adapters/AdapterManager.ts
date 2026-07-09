@@ -1,5 +1,6 @@
 import { SiteAdapter } from './SiteAdapter';
 import { TwiHubAdapter } from './TwiHubAdapter';
+import { PektinoAdapter } from './PektinoAdapter';
 import { NextApiAdapter } from './NextApiAdapter';
 import { XHotVideoAdapter } from './XHotVideoAdapter';
 import { MonsnodeAdapter } from './MonsnodeAdapter';
@@ -18,6 +19,7 @@ export class AdapterManager {
     private constructor() {
         // Register all site adapters
         this.adapters = [
+            new PektinoAdapter(),
             new TwiHubAdapter(),
             new NextApiAdapter(),
             new XHotVideoAdapter(),

@@ -83,6 +83,7 @@ export const Components = {
 
     getSiteSwitchHTML() {
         const sites = [
+            { name: 'Pektino', url: 'https://pektino.com' },
             { name: 'TwiHub', url: 'https://twihub.net' },
             { name: 'TwiKeep', url: 'https://www.twikeep.com' },
             { name: 'TwiIdol', url: 'https://www.twiidol.com' },
@@ -97,11 +98,22 @@ export const Components = {
         ];
 
         const hostname = window.location.hostname;
-        const currentSite = sites.find(s => hostname.includes(s.url.replace('https://', '').replace('www.', '')));
-        const currentSiteName = currentSite ? currentSite.name : 'TwiHub';
+        const isMatch = (s: typeof sites[0]) => {
+            const domain = s.url.replace('https://', '').replace('www.', '');
+            if (s.name === 'Pektino') {
+                return hostname.includes('pektino.com') || 
+                       hostname.includes('x-ero-anime.com') || 
+                       hostname.includes('truvaze.com') ||
+                       hostname.includes('twitter-ero-video-ranking.com');
+            }
+            return hostname.includes(domain);
+        };
+
+        const currentSite = sites.find(isMatch);
+        const currentSiteName = currentSite ? currentSite.name : 'Pektino';
 
         const listItems = sites.map(s => {
-            const isActive = hostname.includes(s.url.replace('https://', '').replace('www.', ''));
+            const isActive = isMatch(s);
             return `<a href="${s.url}" class="site-dd-item ${isActive ? 'active' : ''}" target="_blank" rel="noopener">${s.name}</a>`;
         }).join('');
 
