@@ -48,9 +48,19 @@ export default defineConfig(({ command }) => ({
     monkey({
       entry: 'src/main.ts',
       userscript: {
-        name: 'Twitter排行榜：TikTok版',
+        name: {
+          '': 'X-Flow: TikTok Mode Media Ranking',
+          'zh-CN': 'Twitter排行榜：TikTok版',
+          'zh-TW': 'Twitter排行榜：TikTok版',
+          'en': 'X-Flow: TikTok Mode Media Ranking',
+        },
         namespace: 'xflow.loadingi.local',
-        description: 'TikTok风格上下滑动切换，PC/移动端双端适配，缩略图先行加载、进度指示、点赞、只看未读、循环播放、长按倍速、广告/弹窗/重定向屏蔽',
+        description: {
+          '': 'TikTok-style vertical video browsing experience, optimized for PC/Mobile, preloads, speed control and anti-redirects.',
+          'zh-CN': 'TikTok风格上下滑动切换，PC/移动端双端适配，缩略图先行加载、进度指示、点赞、只看未读、循环播放、长按倍速、广告/弹窗/重定向屏蔽',
+          'zh-TW': 'TikTok風格上下滑動切換，PC/移動端雙端適配，縮略圖先行載入、進度指示、點讚、只看未讀、循環播放、長按倍速、廣告/彈窗/重新導向屏蔽',
+          'en': 'TikTok-style vertical video browsing experience, optimized for PC/Mobile, preloads, speed control and anti-redirects.',
+        },
         author: 'Chris_C',
         license: 'Apache-2.0',
         match: [

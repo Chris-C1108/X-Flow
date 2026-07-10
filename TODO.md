@@ -1,4 +1,4 @@
-新站点适配 :
+新站点适配 v6.2.1 done :
 https://pektino.com  
 很久以前为了兼容旧网站做了些api测试不知道是否还有效 - ' .agents/dev-docs/api-ceshi.md  
 访问 http://truvaze.com/ 或跳转到 https://pektino.com/ （这是最新网址） 
