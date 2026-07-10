@@ -20,7 +20,7 @@ export class VirtualList {
             const node = document.createElement('div');
             node.className = 'tm-video-stage';
             // Each node uses the existing CSS rules + transform hooks
-            node.style.cssText = 'position: absolute; inset: 0; transition: transform 0.35s cubic-bezier(0.25, 1, 0.5, 1); transform: translateY(100%); z-index: 1;';
+            node.style.cssText = 'position: absolute; inset: 0; transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1); transform: translateY(100%); z-index: 1;';
             node.innerHTML = `
                 <img class="tm-thumb hidden" alt="" referrerpolicy="no-referrer">
                 <video class="tm-video" playsinline webkit-playsinline preload="metadata"></video>
@@ -48,7 +48,7 @@ export class VirtualList {
 
     public setTransition(enable: boolean) {
         this.nodes.forEach(node => {
-            node.style.transition = enable ? 'transform 0.35s cubic-bezier(0.25, 1, 0.5, 1)' : 'none';
+            node.style.transition = enable ? 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)' : 'none';
         });
     }
 

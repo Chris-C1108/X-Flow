@@ -844,6 +844,14 @@ export class TikTokMode {
     public openModal(index: number, startTime?: number) {
         this.isOpen = true;
         this.modal.style.display = 'block';
+        
+        // Defer adding active class to next paint frame to avoid browser display transition bugs
+        setTimeout(() => {
+            if (this.isOpen) {
+                this.modal.classList.add('active');
+            }
+        }, 20);
+
         this.currentIndex = index;
         this.pendingStartTime = startTime || 0;
         
@@ -878,9 +886,17 @@ export class TikTokMode {
             document.exitPictureInPicture().catch(() => {});
         }
         this.isOpen = false;
-        this.modal.style.display = 'none';
+        this.modal.classList.remove('active');
+        
+        // Defer hiding display and unloading videos by 200ms to allow CSS exit transition to finish
+        setTimeout(() => {
+            if (!this.isOpen) {
+                this.modal.style.display = 'none';
+                this.unloadAllVideos(); // Free media engine and GPU memory on close
+            }
+        }, 200);
+
         this.pauseAll();
-        this.unloadAllVideos(); // Free media engine and GPU memory on close
         collector.flushSession();
         this.pool.stopPrefetching();
 

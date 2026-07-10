@@ -1,7 +1,7 @@
 # X-Flow (Twitter Media Ranking TikTok-style Player v6 Pro)
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-6.2.2-blue.svg?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/Version-6.2.3-blue.svg?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Tampermonkey-red.svg?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/License-Apache--2.0-green.svg?style=flat-square" alt="License">
 </p>
@@ -83,6 +83,7 @@ If you wish to modify or compile the project yourself, follow these steps:
 
 ## 📝 Changelog
 
+*   **v6.2.3**: Optimized modal enter and exit animations. Resolved an issue where the TikTok player modal could remain transparent/hidden on initial opens in mobile WebKit/Blink browsers.
 *   **v6.2.2**: Refactored config parameters for latest host adapters.
 *   **v6.2.1**: Implemented progress persistence (LRU + TTL) & resumption. Upgraded node pool to 5 to eliminate back-swipe lag. Resolved iOS Safari's hover-click interception bug. Added event index consistency guards.
 *   **v6.2.0**: Adapted to `pektino.com` Next.js REST API. Boosted initial loading skeletons to <5ms via `GM_setValue` cache. Eliminated SW-based range caching blockages.
