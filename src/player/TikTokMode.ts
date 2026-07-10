@@ -6,6 +6,7 @@ import { collector } from '../telemetry/EventCollector';
 import { fetchComments, postComment, Comment } from '../api/CommentService';
 import { AdapterManager } from '../api/adapters/AdapterManager';
 import { t } from '../utils/i18n';
+import { ProgressManager } from '../engine/ProgressManager';
 
 function escapeCSSUrl(url: string) {
     return url.replace(/["'\\]/g, '\\$&');
@@ -846,11 +847,17 @@ export class TikTokMode {
         this.currentIndex = index;
         this.pendingStartTime = startTime || 0;
         
+        // Reset progress bar, time text, and highlight markers immediately
+        this.resetProgress();
+
         this.vl.setTransition(false);
         this.vl.updateTransforms(this.currentIndex, 0);
         
         this.loadNode(this.currentIndex);
         this.playCurrent();
+
+        // Immediately start prefetching details of upcoming videos (low bandwidth, resolves redirects early)
+        this.pool.startPrefetching(this.currentIndex, 5, 800);
 
         // Defer neighboring node loads and background prefetching to avoid bandwidth competition
         if (this.preloadTimer) clearTimeout(this.preloadTimer);
@@ -859,7 +866,6 @@ export class TikTokMode {
                 this.loadNode(this.currentIndex - 1);
                 this.loadNode(this.currentIndex + 1);
                 this.schedulePreload();
-                this.pool.startPrefetching(this.currentIndex, 5, 800);
             }
         }, 1500);
     }
@@ -874,6 +880,7 @@ export class TikTokMode {
         this.isOpen = false;
         this.modal.style.display = 'none';
         this.pauseAll();
+        this.unloadAllVideos(); // Free media engine and GPU memory on close
         collector.flushSession();
         this.pool.stopPrefetching();
 
@@ -898,6 +905,9 @@ export class TikTokMode {
         
         this.pauseAll();
 
+        // Reset progress bar, time text, and highlight markers immediately
+        this.resetProgress();
+
         let nextIndex = this.currentIndex + delta;
         if (nextIndex < 0) {
             nextIndex = list.length - 1;
@@ -916,6 +926,12 @@ export class TikTokMode {
         this.vl.setTransition(true);
         this.vl.updateTransforms(this.currentIndex, 0);
 
+        // Immediately load the current node to show thumbnail/metadata and fetch details
+        this.loadNode(this.currentIndex);
+
+        // Immediately start prefetching details of upcoming videos (low bandwidth, resolves redirects early)
+        this.pool.startPrefetching(this.currentIndex, 5, 800);
+
         // Defer neighboring node loads and background prefetching to avoid bandwidth competition
         if (this.preloadTimer) clearTimeout(this.preloadTimer);
         this.preloadTimer = setTimeout(() => {
@@ -923,7 +939,6 @@ export class TikTokMode {
                 this.loadNode(this.currentIndex + delta);
                 this.loadNode(this.currentIndex - delta);
                 this.schedulePreload();
-                this.pool.startPrefetching(this.currentIndex, 5, 800);
             }
         }, 1500);
 
@@ -977,7 +992,7 @@ export class TikTokMode {
 
             video.setAttribute('data-index', logicalIndex.toString());
             video.loop = this.loop;
-            video.preload = isCurrent ? 'auto' : 'none';
+            video.preload = isCurrent ? 'auto' : 'metadata';
             thumb.src = item.thumbnail || '';
             node.style.backgroundImage = `url("${escapeCSSUrl(item.thumbnail || '')}")`;
             node.style.backgroundSize = 'cover';
@@ -1024,7 +1039,7 @@ export class TikTokMode {
                     }
                 }, 1500);
             } else {
-                if (resolvedItem.url && video.src !== resolvedItem.url && video.preload === 'auto') {
+                if (resolvedItem.url && video.src !== resolvedItem.url) {
                     video.src = resolvedItem.url;
                 }
             }
@@ -1032,9 +1047,38 @@ export class TikTokMode {
     }
 
     private pauseAll() {
+        const list = this.pool.getDataPool();
+        if (list.length && this.currentIndex >= 0 && this.currentIndex < list.length) {
+            const currentItem = list[this.currentIndex];
+            const currentVideo = this.getCurrentVideo();
+            if (currentVideo && currentVideo.duration && !currentVideo.paused) {
+                ProgressManager.getInstance().saveProgress(
+                    String(currentItem.id),
+                    currentVideo.currentTime,
+                    currentVideo.duration,
+                    true // immediate save
+                );
+            }
+        }
+
         this.vl.getNodes().forEach(n => {
             const v = n.querySelector('.tm-video') as HTMLVideoElement;
             v.pause();
+        });
+    }
+
+    private unloadAllVideos() {
+        this.vl.getNodes().forEach(n => {
+            const v = n.querySelector('.tm-video') as HTMLVideoElement;
+            v.pause();
+            v.removeAttribute('src');
+            try {
+                v.load(); // Force media engine release
+            } catch {}
+            v.removeAttribute('data-index');
+            const thumb = n.querySelector('.tm-thumb') as HTMLImageElement;
+            if (thumb) thumb.classList.add('hidden');
+            n.style.backgroundImage = 'none';
         });
     }
 
@@ -1080,7 +1124,21 @@ export class TikTokMode {
         video.volume = this.isMuted ? 0 : this.volume;
         video.muted = this.isMuted;
 
-        const startTime = this.pendingStartTime || 0;
+        const savedItem = ProgressManager.getInstance().getProgressItem(videoId);
+        const savedProgress = savedItem ? savedItem.time : 0;
+        const startTime = this.pendingStartTime || savedProgress || 0;
+
+        if (startTime > 0) {
+            const duration = video.duration || item.duration || (savedItem ? savedItem.duration : 0) || 0;
+            if (duration > 0) {
+                const p = (startTime / duration) * 100;
+                this.progressFill.style.width = p + '%';
+                this.timeText.textContent = formatTime(startTime) + ' / ' + formatTime(duration);
+                const progressWrap = this.uiLayer.querySelector('#tm-progress-wrap');
+                if (progressWrap) progressWrap.setAttribute('aria-valuenow', String(Math.round(p)));
+            }
+        }
+
         if (startTime > 0 && item.url && video.src === item.url) {
             this.pendingStartTime = 0; // reset
             if (video.readyState >= 1) {
@@ -1112,6 +1170,7 @@ export class TikTokMode {
         }
 
         video.onleavepictureinpicture = () => {
+            if (video.getAttribute('data-index') !== this.currentIndex.toString()) return;
             if (this.isOpen && !video.paused) {
                 video.play().catch(() => {});
             }
@@ -1124,6 +1183,7 @@ export class TikTokMode {
         this.renderHighlightMarkers(videoId);
 
         video.ontimeupdate = () => {
+            if (video.getAttribute('data-index') !== this.currentIndex.toString()) return;
             if (!video.duration) return;
             const p = (video.currentTime / video.duration) * 100;
             this.progressFill.style.width = p + '%';
@@ -1134,9 +1194,13 @@ export class TikTokMode {
             this.timeText.textContent = formatTime(video.currentTime) + ' / ' + formatTime(video.duration);
 
             collector.trackTimeUpdate(video.currentTime, video.duration);
+
+            // Periodically cache video progress (throttled inside ProgressManager)
+            ProgressManager.getInstance().saveProgress(videoId, video.currentTime, video.duration, false);
         };
 
         video.onended = () => {
+            if (video.getAttribute('data-index') !== this.currentIndex.toString()) return;
             if (!this.loop) {
                 this.navigate(1);
             }
@@ -1347,6 +1411,20 @@ export class TikTokMode {
             m.remove();
         }
         this.highlightMarkers = [];
+    }
+
+    private resetProgress() {
+        if (this.progressFill) {
+            this.progressFill.style.width = '0%';
+        }
+        if (this.timeText) {
+            this.timeText.textContent = '0:00 / 0:00';
+        }
+        const progressWrap = this.uiLayer.querySelector('#tm-progress-wrap');
+        if (progressWrap) {
+            progressWrap.setAttribute('aria-valuenow', '0');
+        }
+        this.clearHighlightMarkers();
     }
 
     // ── M2-6: 博主主页/相关推荐面板数据加载 ───────────────────────────

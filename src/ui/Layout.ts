@@ -821,6 +821,7 @@ export class Layout {
 
             gridContainer.addEventListener('touchend', (e: TouchEvent) => {
                 if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
+                
                 if (this.hoverCard) {
                     const card = (e.target as HTMLElement).closest('.media-card') as HTMLElement | null;
                     if (card && card === this.hoverCard) {
@@ -838,6 +839,27 @@ export class Layout {
                         this.clearActiveHoverVideo();
                     }
                     e.preventDefault();
+                } else if (!touchScrolled) {
+                    // Short tap on mobile: open player immediately (bypasses iOS hover delay and double-tap quirk)
+                    const card = (e.target as HTMLElement).closest('.media-card') as HTMLElement | null;
+                    if (card) {
+                        // Check if bookmark selection checkbox is visible
+                        const chk = card.querySelector('.bookmark-select-chk') as HTMLInputElement | null;
+                        if (chk && chk.style.display !== 'none') {
+                            if (e.target !== chk) {
+                                chk.checked = !chk.checked;
+                            }
+                            e.preventDefault();
+                            return;
+                        }
+
+                        const indexAttr = card.getAttribute('data-index');
+                        if (indexAttr) {
+                            const index = parseInt(indexAttr);
+                            this.player.openModal(index, 0);
+                            e.preventDefault(); // Prevent simulated mouse/click events
+                        }
+                    }
                 }
             }, { passive: false });
 

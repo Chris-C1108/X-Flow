@@ -16,7 +16,7 @@ export class VirtualList {
         this.container.style.cssText = 'position: absolute; inset: 0; overflow: hidden; touch-action: pan-x; background: #000; z-index: 10; overflow-anchor: none; contain: layout size style; height: 100dvh;';
         this.nodes = [];
 
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 5; i++) {
             const node = document.createElement('div');
             node.className = 'tm-video-stage';
             // Each node uses the existing CSS rules + transform hooks
@@ -39,7 +39,7 @@ export class VirtualList {
     }
 
     public getNodeIndex(logicalIndex: number) {
-        return ((logicalIndex % 3) + 3) % 3;
+        return ((logicalIndex % 5) + 5) % 5;
     }
 
     public getNode(logicalIndex: number) {
@@ -56,6 +56,11 @@ export class VirtualList {
         const curr = this.getNodeIndex(currentIndex);
         const prev = this.getNodeIndex(currentIndex - 1);
         const next = this.getNodeIndex(currentIndex + 1);
+        const prev2 = this.getNodeIndex(currentIndex - 2);
+        const next2 = this.getNodeIndex(currentIndex + 2);
+
+        this.nodes[prev2].style.transform = `translateY(calc(-200% + ${offsetPx}px))`;
+        this.nodes[prev2].style.zIndex = '1';
 
         this.nodes[prev].style.transform = `translateY(calc(-100% + ${offsetPx}px))`;
         this.nodes[prev].style.zIndex = '1';
@@ -65,5 +70,8 @@ export class VirtualList {
 
         this.nodes[next].style.transform = `translateY(calc(100% + ${offsetPx}px))`;
         this.nodes[next].style.zIndex = '1';
+
+        this.nodes[next2].style.transform = `translateY(calc(200% + ${offsetPx}px))`;
+        this.nodes[next2].style.zIndex = '1';
     }
 }
