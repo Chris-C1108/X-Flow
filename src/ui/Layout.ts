@@ -13,6 +13,7 @@ function escapeCSSUrl(url: string) {
 }
 
 import { TikTokMode } from '../player/TikTokMode';
+import { collector } from '../telemetry/EventCollector';
 
 /**
  * 核心容器与 CSS 注入，以及数据展示的 DOM 构造逻辑
@@ -59,6 +60,13 @@ export class Layout {
         });
         this.bindDetailLoaderListener();
         this.loadInitialData();
+
+        // DAU 心跳：统计脚本总日活终端数与各站点日活（6小时防重发）
+        const activeAdapter = AdapterManager.getInstance().getActiveAdapter();
+        const siteKey = activeAdapter ? (activeAdapter.id || activeAdapter.constructor.name.replace('Adapter', '').toLowerCase()) : '';
+        collector.setSiteKey(siteKey);
+        collector.setChannel(this.pool.getCurrentQuery().isAnimeOnly);
+        collector.trackAppInit(siteKey);
     }
 
     private bindDetailLoaderListener() {
@@ -300,12 +308,20 @@ export class Layout {
 
         // Channel switch: update theme & recreate structure
         if (opts?.channelSwitch && partial.isAnimeOnly !== undefined) {
+            const prevChannel = this.pool.getCurrentQuery().isAnimeOnly ? 'anime' : 'real';
+            const nextChannel = partial.isAnimeOnly ? 'anime' : 'real';
+            if (prevChannel !== nextChannel) {
+                collector.trackChannelSwitch(prevChannel, nextChannel);
+            }
             if (this.rootElement) {
                 this.rootElement.className = partial.isAnimeOnly ? 'theme-anime' : 'theme-real';
             }
             this.createPageStructure();
             this.bindEvents();
         }
+
+        // Keep collector in sync with current channel
+        collector.setChannel(partial.isAnimeOnly ?? this.pool.getCurrentQuery().isAnimeOnly);
 
         try {
             const result = await this.pool.loadInitialData(partial);

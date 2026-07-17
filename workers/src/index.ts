@@ -8,19 +8,16 @@
  *   GET  /api/ping                 健康检查
  *
  * 安全:
- *   - IP Rate Limiting via KV (每 IP 每分钟 30 次)
  *   - 时间戳 Token 防爬（5 分钟窗口）
  *   - CORS 仅限目标域名
  */
 
 export interface Env {
     DB: D1Database;         // D1 数据库
-    KV: KVNamespace;        // KV (仅用于 Rate Limiting)
 }
 
 // ── 配置 ──────────────────────────────────────────────────────────
 const TOKEN_SALT    = 'XFLOW_v6_SECRET';  // 与前端保持一致
-const RATE_LIMIT    = 30;                  // 每 IP 每分钟请求上限
 const TOKEN_WINDOW  = 5 * 60 * 1000;      // Token 时间窗口 5 分钟
 
 const ALLOWED_ORIGINS = [
@@ -60,16 +57,7 @@ function isValidToken(token: string | null, tsStr: string | null): boolean {
     return token === expected;
 }
 
-// ── Rate Limiting ─────────────────────────────────────────────────
-async function checkRateLimit(ip: string, kv: KVNamespace): Promise<boolean> {
-    const key = `rl:${ip}`;
-    const raw = await kv.get(key);
-    const count = parseInt(raw || '0');
-    if (count >= RATE_LIMIT) return false;  // 超限
 
-    await kv.put(key, String(count + 1), { expirationTtl: 60 });
-    return true;
-}
 
 // ── 参数校验工具 ──────────────────────────────────────────────────
 function sanitizeStr(val: unknown, maxLen = 64): string {
@@ -105,7 +93,11 @@ async function handleInteract(req: Request, env: Env): Promise<Response> {
     }
 
     // 白名单事件类型
-    const validActions = ['like', 'download', 'bookmark_add', 'bookmark_remove', 'view_start'];
+    const validActions = [
+        'download', 'bookmark_add', 'bookmark_remove', 'view_start',
+        'speed_change', 'author_view', 'batch_copy', 'pip_enter', 'channel_switch',
+        'app_init',  // 脚本初始化心跳 — 用于统计日活终端数
+    ];
     if (!validActions.includes(action)) {
         return new Response('Invalid action', { status: 422 });
     }
@@ -116,6 +108,9 @@ async function handleInteract(req: Request, env: Env): Promise<Response> {
                       : hourOfDay < 12  ? 'morning'
                       : hourOfDay < 18  ? 'afternoon'
                       : 'evening';
+
+    const siteKey  = sanitizeStr(body.site_key, 32);
+    const authorId = sanitizeStr(body.author_id, 64);
 
     await env.DB.batch([
         env.DB.prepare(`
@@ -128,9 +123,9 @@ async function handleInteract(req: Request, env: Env): Promise<Response> {
         `).bind(anonId, ts, ts, loginPeriod),
 
         env.DB.prepare(`
-            INSERT INTO interactions (anon_id, video_id, action, ts, hour_of_day, channel)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `).bind(anonId, videoId, action, ts, hourOfDay, channel),
+            INSERT INTO interactions (anon_id, video_id, action, ts, hour_of_day, channel, site_key, author_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(anonId, videoId, action, ts, hourOfDay, channel, siteKey, authorId),
     ]);
 
     return new Response(JSON.stringify({ ok: true }), {
@@ -240,12 +235,7 @@ export default {
             });
         }
 
-        // Rate Limiting
-        const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-        const allowed = await checkRateLimit(ip, env.KV);
-        if (!allowed) {
-            return new Response('Too Many Requests', { status: 429, headers: cors });
-        }
+
 
         // Token 验证
         const token = request.headers.get('X-XFlow-Token');

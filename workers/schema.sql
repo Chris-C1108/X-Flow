@@ -12,19 +12,23 @@ CREATE TABLE IF NOT EXISTS users (
     dominant_period TEXT    NOT NULL DEFAULT 'unknown'  -- morning/afternoon/evening/late_night/early_morning
 );
 
--- 低频交互事件表（点赞/下载/收藏/浏览开始）
+-- 低频交互事件表（下载/收藏/浏览开始/倍速/作者面板/批量复制/PiP/频道切换）
 CREATE TABLE IF NOT EXISTS interactions (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     anon_id     TEXT    NOT NULL,
     video_id    TEXT    NOT NULL,
-    action      TEXT    NOT NULL,   -- like|download|bookmark_add|bookmark_remove|view_start
+    action      TEXT    NOT NULL,   -- download|bookmark_add|bookmark_remove|view_start|speed_change|author_view|batch_copy|pip_enter|channel_switch
     ts          INTEGER NOT NULL,
     hour_of_day INTEGER NOT NULL DEFAULT 0,  -- 0-23
-    channel     TEXT    NOT NULL DEFAULT 'real'  -- real|anime
+    channel     TEXT    NOT NULL DEFAULT 'real',  -- real|anime
+    site_key    TEXT    NOT NULL DEFAULT '',  -- adapter 站点标识，如 pektino/twihub/nextapi 等，用于溯源视频
+    author_id   TEXT    NOT NULL DEFAULT ''   -- 作者 ID（tweet_account），用于作者维度推荐
 );
 CREATE INDEX IF NOT EXISTS idx_interact_video  ON interactions(video_id, action);
 CREATE INDEX IF NOT EXISTS idx_interact_user   ON interactions(anon_id, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_interact_ts     ON interactions(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_interact_author ON interactions(author_id);
+CREATE INDEX IF NOT EXISTS idx_interact_site   ON interactions(site_key);
 
 -- 播放时间轴宽表（替代 R2，避免追加写竞争）
 CREATE TABLE IF NOT EXISTS play_sessions (
@@ -62,9 +66,29 @@ CREATE TABLE IF NOT EXISTS recommendations (
 -- 查询用户行为矩阵（用于协同过滤）:
 -- SELECT anon_id, video_id, action, COUNT(*) as weight
 -- FROM interactions
--- WHERE action IN ('like', 'download', 'bookmark_add')
+-- WHERE action IN ('download', 'bookmark_add', 'view_start')
 -- GROUP BY anon_id, video_id, action;
+
+-- 查询用户偏好作者（用于作者维度推荐）:
+-- SELECT anon_id, author_id, COUNT(*) as cnt
+-- FROM interactions
+-- WHERE author_id != '' AND action IN ('author_view', 'bookmark_add', 'download')
+-- GROUP BY anon_id, author_id;
+
+-- 查询各站点流量分布:
+-- SELECT site_key, COUNT(*) as cnt FROM interactions
+-- WHERE site_key != '' GROUP BY site_key;
 
 -- 查询活跃时段分布（用于用户画像）:
 -- SELECT dominant_period, COUNT(*) as user_count
 -- FROM users GROUP BY dominant_period;
+
+-- ============================================================
+-- 生产环境迁移语句（v8.4 升级时执行）
+-- 执行方式：wrangler d1 execute xflow-telemetry --remote --command="<SQL>"
+-- ============================================================
+
+-- ALTER TABLE interactions ADD COLUMN site_key TEXT NOT NULL DEFAULT '';
+-- ALTER TABLE interactions ADD COLUMN author_id TEXT NOT NULL DEFAULT '';
+-- CREATE INDEX IF NOT EXISTS idx_interact_author ON interactions(author_id);
+-- CREATE INDEX IF NOT EXISTS idx_interact_site ON interactions(site_key);

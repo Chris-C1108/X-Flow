@@ -84,7 +84,15 @@ npm run build            # 构建生产 .user.js 到 dist/
 - **CSS Variables** — 所有颜色通过 `--bg-base`, `--text-100` 等 CSS 变量控制
 - **模板字符串** — 修改含大量模板字符串的文件后，`npm run build` 验证是 **MANDATORY**
 
+## Telemetry & Event Tracking
+
+为了分析改善交互设计（如倍速、面板使用偏好）以及计算视频热度与高光片段，系统设计了细粒度的遥测体系：
+
+- **遥测目标：** 收集用户习惯与会话交互，驱动离线推荐算法及高光时段提取，以持续改善交互体验。
+- **更新规范：** 当今后进行任何功能更新时（特别是添加新的 UI 按钮、操作面板、手势或播放模式），**必须检查并同步修改遥测逻辑**，以确保新功能的使用状况能够被正确追踪，避免统计漏洞。
+
 ## Manual Verification
+
 
 无自动化测试。每次修改后需手动验证：
 
@@ -103,6 +111,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 
 | 版本 | 设计/计划文档 | 当前阶段 | 整体进度 |
 |------|---------------|----------|----------|
+| **v8.4.0** | [walkthrough.md](file:///C:/Users/chenahao/.gemini/antigravity/brain/31859e65-10a6-445e-a0b0-6793af093337/walkthrough.md) | M1 — 全面升级遥测：移除 KV、新增10类事件、站点/作者溯源、DAU统计 | ✅ 完成 |
 | **v8.3.0** | [implementation_plan.md](file:///Users/chen/.gemini/antigravity/brain/be08b881-8f93-49ed-a3fd-413ed10a1053/implementation_plan.md) | M4 — 播放器缓冲延迟与连接调度优化 | ✅ 完成 |
 | **v8.2.0** | [implementation_plan.md](file:///C:/Users/chenahao/.gemini/antigravity/brain/37193574-d828-44d7-bbbd-c457e589c071/implementation_plan.md) | M1 — 批量下载与列表播放逻辑升级 | ✅ 完成 |
 | **v8.1.0** | [implementation_plan.md](file:///C:/Users/chenahao/.gemini/antigravity/brain/b3c02987-a9c5-463b-b6e1-3086cb8e9e6a/implementation_plan.md) | M1 — UI/UX 13项缺陷与功能升级 | ✅ 完成 |

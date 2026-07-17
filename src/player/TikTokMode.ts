@@ -248,6 +248,10 @@ export class TikTokMode {
 
             const video = this.getCurrentVideo();
             if (video) video.playbackRate = rate;
+
+            // Track speed change (only explicit panel selection, not long-press)
+            const list = this.pool.getDataPool();
+            if (list.length) collector.trackSpeedChange(String(list[this.currentIndex].id), rate);
         });
 
         this.modal.addEventListener('click', () => {
@@ -265,6 +269,8 @@ export class TikTokMode {
                         await document.exitPictureInPicture();
                     } else if (video) {
                         await video.requestPictureInPicture();
+                        const list = this.pool.getDataPool();
+                        if (list.length) collector.trackPiP(String(list[this.currentIndex].id));
                     }
                 } catch (err) {
                     console.log('PiP not available', err);
@@ -347,6 +353,11 @@ export class TikTokMode {
             // Horizontal swipe left (deltaX < -60) -> Open Author Panel
             if (deltaX < -60 && Math.abs(deltaY) < 60) {
                 this.vl.updateTransforms(this.currentIndex, 0);
+                const list = this.pool.getDataPool();
+                if (list.length) {
+                    const item = list[this.currentIndex];
+                    collector.trackAuthorView(item.tweet_account || '', String(item.id));
+                }
                 this.openAuthorPanel();
                 return;
             }
@@ -605,6 +616,10 @@ export class TikTokMode {
             const linksText = links.join('\n');
             try {
                 await navigator.clipboard.writeText(linksText);
+
+                // Track batch copy
+                const currentItem = this.pool.getDataPool()[this.currentIndex];
+                collector.trackBatchCopy(currentItem?.tweet_account || '', links.length);
 
                 // Temporary visual feedback
                 const originalText = authorCopyBtn.textContent;
@@ -1181,6 +1196,7 @@ export class TikTokMode {
 
             authorBtn.onclick = (e) => {
                 e.stopPropagation();
+                collector.trackAuthorView(item.tweet_account || '', videoId);
                 this.openAuthorPanel();
             };
         }
@@ -1194,6 +1210,10 @@ export class TikTokMode {
 
         collector.startSession(videoId);
         collector.trackViewStart(videoId);
+        // 同步 site_key 与 author_id，确保此后所有事件可溯源
+        const activeAdapter = AdapterManager.getInstance().getActiveAdapter();
+        collector.setSiteKey(activeAdapter ? activeAdapter.id || activeAdapter.constructor.name.replace('Adapter', '').toLowerCase() : '');
+        collector.setCurrentAuthor(item.tweet_account || '');
 
         // M2-3: 异步拉取高光时刻并渲染到进度条（不阻塞播放主流程）
         this.renderHighlightMarkers(videoId);
