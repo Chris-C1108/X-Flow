@@ -112,21 +112,39 @@ async function handleInteract(req: Request, env: Env): Promise<Response> {
     const siteKey  = sanitizeStr(body.site_key, 32);
     const authorId = sanitizeStr(body.author_id, 64);
 
-    await env.DB.batch([
-        env.DB.prepare(`
-            INSERT INTO users (anon_id, first_seen, last_seen, session_count, dominant_period)
-            VALUES (?, ?, ?, 1, ?)
-            ON CONFLICT(anon_id) DO UPDATE SET
-                last_seen = excluded.last_seen,
-                session_count = session_count + 1,
-                dominant_period = excluded.dominant_period
-        `).bind(anonId, ts, ts, loginPeriod),
+    const sqls = [];
 
+    // Only update/insert users table on app_init heartbeats to save D1 write limits
+    if (action === 'app_init') {
+        const loginPeriod = hourOfDay >= 22 || hourOfDay < 2 ? 'late_night'
+                          : hourOfDay < 6   ? 'early_morning'
+                          : hourOfDay < 12  ? 'morning'
+                          : hourOfDay < 18  ? 'afternoon'
+                          : 'evening';
+        sqls.push(
+            env.DB.prepare(`
+                INSERT INTO users (anon_id, first_seen, last_seen, session_count, dominant_period)
+                VALUES (?, ?, ?, 1, ?)
+                ON CONFLICT(anon_id) DO UPDATE SET
+                    last_seen = excluded.last_seen,
+                    session_count = session_count + 1,
+                    dominant_period = excluded.dominant_period
+            `).bind(anonId, ts, ts, loginPeriod)
+        );
+    }
+
+    sqls.push(
         env.DB.prepare(`
             INSERT INTO interactions (anon_id, video_id, action, ts, hour_of_day, channel, site_key, author_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(anonId, videoId, action, ts, hourOfDay, channel, siteKey, authorId),
-    ]);
+        `).bind(anonId, videoId, action, ts, hourOfDay, channel, siteKey, authorId)
+    );
+
+    if (sqls.length === 1) {
+        await sqls[0].run();
+    } else {
+        await env.DB.batch(sqls);
+    }
 
     return new Response(JSON.stringify({ ok: true }), {
         headers: { 'Content-Type': 'application/json' },

@@ -72,6 +72,7 @@ export class EventCollector {
     private totalPlayedSec: number = 0;
 
     private flushTimer: ReturnType<typeof setInterval> | null = null;
+    private viewStartTimer: ReturnType<typeof setTimeout> | null = null;
 
     private lastInteractVideo: string = '';
     private lastInteractTs: number = 0;
@@ -110,8 +111,17 @@ export class EventCollector {
     }
 
     trackViewStart(videoId: string): void {
-        if (videoId === this.lastInteractVideo && Date.now() - this.lastInteractTs < 5000) return;
-        this.sendInteract(videoId, 'view_start');
+        if (this.viewStartTimer) {
+            clearTimeout(this.viewStartTimer);
+            this.viewStartTimer = null;
+        }
+
+        // Delay view_start reporting by 2 seconds to filter out rapid scroll-past events
+        this.viewStartTimer = setTimeout(() => {
+            if (videoId === this.lastInteractVideo && Date.now() - this.lastInteractTs < 5000) return;
+            this.sendInteract(videoId, 'view_start');
+            this.viewStartTimer = null;
+        }, 2000);
     }
 
     /** 用户通过面板选择倍速时上报（不追踪长按临时加速） */
@@ -178,6 +188,11 @@ export class EventCollector {
 
     startSession(videoId: string): void {
         this.flushSession();
+
+        if (this.viewStartTimer) {
+            clearTimeout(this.viewStartTimer);
+            this.viewStartTimer = null;
+        }
 
         this.currentVideoId = videoId;
         this.sessionStart = Date.now();
@@ -285,6 +300,10 @@ export class EventCollector {
         if (this.flushTimer) {
             clearInterval(this.flushTimer);
             this.flushTimer = null;
+        }
+        if (this.viewStartTimer) {
+            clearTimeout(this.viewStartTimer);
+            this.viewStartTimer = null;
         }
     }
 }
