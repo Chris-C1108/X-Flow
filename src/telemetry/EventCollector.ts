@@ -59,6 +59,15 @@ function getOrCreateAnonId(runtime: RuntimeAdapter): string {
     return newId;
 }
 
+const getScriptVersion = (): string => {
+    try {
+        if (typeof GM_info !== 'undefined' && GM_info?.script?.version) {
+            return GM_info.script.version;
+        }
+    } catch (_) {}
+    return '6.2.7';
+};
+
 export class EventCollector {
     private readonly runtime: RuntimeAdapter;
     private anonId: string;
@@ -180,6 +189,7 @@ export class EventCollector {
             channel: this.channel,
             site_key: this.siteKey,
             author_id: extra.author_id !== undefined ? extra.author_id : this.currentAuthorId,
+            version: getScriptVersion(),
             ...extra,
         });
     }
@@ -224,6 +234,7 @@ export class EventCollector {
             buckets: this.playBuckets,
             channel: this.channel,
             site_key: this.siteKey,
+            version: getScriptVersion(),
         });
 
         this.playBuckets = {};

@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS interactions (
     hour_of_day INTEGER NOT NULL DEFAULT 0,  -- 0-23
     channel     TEXT    NOT NULL DEFAULT 'real',  -- real|anime
     site_key    TEXT    NOT NULL DEFAULT '',  -- adapter 站点标识，如 pektino/twihub/nextapi 等，用于溯源视频
-    author_id   TEXT    NOT NULL DEFAULT ''   -- 作者 ID（tweet_account），用于作者维度推荐
+    author_id   TEXT    NOT NULL DEFAULT '',  -- 作者 ID（tweet_account），用于作者维度推荐
+    version     TEXT    NOT NULL DEFAULT ''   -- 脚本版本信息（例如 6.2.7），用于行为版本分析
 );
 CREATE INDEX IF NOT EXISTS idx_interact_video  ON interactions(video_id, action);
 CREATE INDEX IF NOT EXISTS idx_interact_user   ON interactions(anon_id, ts DESC);
@@ -40,7 +41,8 @@ CREATE TABLE IF NOT EXISTS play_sessions (
     played_sec  INTEGER NOT NULL DEFAULT 0,   -- 有效播放帧的秒数
     buckets     TEXT    NOT NULL DEFAULT '{}',-- JSON: {bucket_index: play_count, ...}
     completion  REAL    NOT NULL DEFAULT 0,   -- 完播率 0.0-1.0
-    channel     TEXT    NOT NULL DEFAULT 'real'
+    channel     TEXT    NOT NULL DEFAULT 'real',
+    version     TEXT    NOT NULL DEFAULT ''   -- 脚本版本信息
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_video  ON play_sessions(video_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user   ON play_sessions(anon_id);
@@ -88,7 +90,12 @@ CREATE TABLE IF NOT EXISTS recommendations (
 -- 执行方式：wrangler d1 execute xflow-telemetry --remote --command="<SQL>"
 -- ============================================================
 
+-- 1. 字段升级 (第一次迁移)
 -- ALTER TABLE interactions ADD COLUMN site_key TEXT NOT NULL DEFAULT '';
 -- ALTER TABLE interactions ADD COLUMN author_id TEXT NOT NULL DEFAULT '';
 -- CREATE INDEX IF NOT EXISTS idx_interact_author ON interactions(author_id);
 -- CREATE INDEX IF NOT EXISTS idx_interact_site ON interactions(site_key);
+
+-- 2. 脚本版本号升级 (第二次迁移)
+-- ALTER TABLE interactions ADD COLUMN version TEXT NOT NULL DEFAULT '';
+-- ALTER TABLE play_sessions ADD COLUMN version TEXT NOT NULL DEFAULT '';

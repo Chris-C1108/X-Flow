@@ -111,6 +111,7 @@ async function handleInteract(req: Request, env: Env): Promise<Response> {
 
     const siteKey  = sanitizeStr(body.site_key, 32);
     const authorId = sanitizeStr(body.author_id, 64);
+    const version  = sanitizeStr(body.version, 16);
 
     const sqls = [];
 
@@ -135,9 +136,9 @@ async function handleInteract(req: Request, env: Env): Promise<Response> {
 
     sqls.push(
         env.DB.prepare(`
-            INSERT INTO interactions (anon_id, video_id, action, ts, hour_of_day, channel, site_key, author_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(anonId, videoId, action, ts, hourOfDay, channel, siteKey, authorId)
+            INSERT INTO interactions (anon_id, video_id, action, ts, hour_of_day, channel, site_key, author_id, version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(anonId, videoId, action, ts, hourOfDay, channel, siteKey, authorId, version)
     );
 
     if (sqls.length === 1) {
@@ -166,6 +167,7 @@ async function handleSession(req: Request, env: Env): Promise<Response> {
     const duration  = sanitizeInt(body.duration, 0, 86400);
     const playedSec = sanitizeInt(body.played_sec, 0, 86400);
     const channel   = body.channel === 'anime' ? 'anime' : 'real';
+    const version   = sanitizeStr(body.version, 16);
 
     if (!anonId || !videoId) {
         return new Response('Missing fields', { status: 422 });
@@ -190,10 +192,10 @@ async function handleSession(req: Request, env: Env): Promise<Response> {
 
     await env.DB.prepare(`
         INSERT INTO play_sessions
-            (anon_id, video_id, session_ts, duration, played_sec, buckets, completion, channel)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (anon_id, video_id, session_ts, duration, played_sec, buckets, completion, channel, version)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(anonId, videoId, sessionTs, duration, playedSec, bucketsJson,
-            Math.round(completion * 1000) / 1000, channel).run();
+            Math.round(completion * 1000) / 1000, channel, version).run();
 
     return new Response(JSON.stringify({ ok: true }), {
         headers: { 'Content-Type': 'application/json' },
