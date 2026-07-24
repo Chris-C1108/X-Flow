@@ -1,6 +1,6 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup } from './SiteAdapter';
 import { parseTwitterHandleFromUrl, extractText, extractAttr, normalizeVideoUrl } from './Helper';
 
 export class TwivideoAdapter implements SiteAdapter {
@@ -31,13 +31,6 @@ export class TwivideoAdapter implements SiteAdapter {
                     { id: 'archives', label: '话题排行', en: 'Archives' }
                 ]
             }
-        ];
-    }
-
-    getHeroRanges(isAnime: boolean): HeroRange[] {
-        return [
-            { id: 'realtime', label: '实时排行', en: 'Realtime', icon: '⏱' },
-            { id: 'archives', label: '话题排行', en: 'Archives', icon: '🏆' }
         ];
     }
 

@@ -51,10 +51,6 @@ export class ApiClient {
         return videoPath;
     }
 
-    public getBaseUrl() {
-        return this.baseUrl;
-    }
-
     public getIsAnime(): boolean {
         return this.isAnime === 1;
     }

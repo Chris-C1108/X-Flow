@@ -1,6 +1,6 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup } from './SiteAdapter';
 
 export class TwiHubAdapter implements SiteAdapter {
     id = 'twihub';
@@ -43,14 +43,6 @@ export class TwiHubAdapter implements SiteAdapter {
                     { id: 'favorite', label: '最多喜欢' }
                 ]
             }
-        ];
-    }
-
-    getHeroRanges(isAnime: boolean): HeroRange[] {
-        return [
-            { id: '1d', label: '24小时', en: '24 Hours', icon: '⏱' },
-            { id: '7d', label: '7天榜', en: '7 Days', icon: '📅' },
-            { id: '30d', label: '30天榜', en: '30 Days', icon: '🗓' }
         ];
     }
 

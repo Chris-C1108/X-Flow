@@ -1,6 +1,6 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup } from './SiteAdapter';
 import { normalizeVideoUrl, getCanonicalVideoId } from './Helper';
 
 export class PektinoAdapter implements SiteAdapter {
@@ -58,15 +58,6 @@ export class PektinoAdapter implements SiteAdapter {
                     { id: '3600,0', label: '1小时以上', en: 'Over 1 hr' }
                 ]
             }
-        ];
-    }
-
-    getHeroRanges(isAnime: boolean): HeroRange[] {
-        return [
-            { id: 'daily', label: '24小时', en: '24 Hours', icon: '⏱' },
-            { id: 'weekly', label: '周榜', en: 'Weekly', icon: '📅' },
-            { id: 'monthly', label: '月榜', en: 'Monthly', icon: '🗓' },
-            { id: 'all', label: '总榜', en: 'All Time', icon: '🏆' }
         ];
     }
 

@@ -1,6 +1,6 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup } from './SiteAdapter';
 import { normalizeVideoUrl, getCanonicalVideoId } from './Helper';
 
 export class NextApiAdapter implements SiteAdapter {
@@ -50,15 +50,6 @@ export class NextApiAdapter implements SiteAdapter {
                     { id: 'favorite', label: '最多点赞' }
                 ]
             }
-        ];
-    }
-
-    getHeroRanges(isAnime: boolean): HeroRange[] {
-        return [
-            { id: 'daily', label: '24小时', en: '24 Hours', icon: '⏱' },
-            { id: 'weekly', label: '周榜', en: 'Weekly', icon: '📅' },
-            { id: 'monthly', label: '月榜', en: 'Monthly', icon: '🗓' },
-            { id: 'all', label: '年榜', en: 'Yearly', icon: '🏆' }
         ];
     }
 

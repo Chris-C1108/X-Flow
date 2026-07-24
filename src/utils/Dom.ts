@@ -1,9 +1,6 @@
 /**
  * DOM 操作辅助
  */
-export const DomUtils = {
-};
-
 export function showConfirmModal(
     title: string,
     message: string,
@@ -25,8 +22,9 @@ export function showConfirmModal(
     
     document.body.appendChild(overlay);
     
-    // Trigger animation
-    setTimeout(() => overlay.classList.add('show'), 10);
+    // Trigger CSS transition via layout reflow (Knowledge #31)
+    overlay.offsetHeight;
+    overlay.classList.add('show');
     
     const cleanup = () => {
         overlay.classList.remove('show');

@@ -111,6 +111,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 
 | 版本 | 设计/计划文档 | 当前阶段 | 整体进度 |
 |------|---------------|----------|----------|
+| **v6.3.0** | [implementation_plan.md](file:///C:/Users/chenahao/.gemini/antigravity/brain/dfad1799-511e-4b76-bb07-9728e5127143/implementation_plan.md) | Ponytail Audit 重构瘦身与 JS 动效 CSS 化/闲置遮罩优化 | ✅ 完成 |
 | **v8.5.0** | [implementation_plan.md](file:///C:/Users/chenahao/.gemini/antigravity/brain/87d7cee9-b84f-46a7-9918-82babefd1ff9/implementation_plan.md) | M1 — 遥测表精简与 Session JSON 宽表重构 (xf_events) | ✅ 完成 |
 | **v8.4.0** | [walkthrough.md](file:///C:/Users/chenahao/.gemini/antigravity/brain/31859e65-10a6-445e-a0b0-6793af093337/walkthrough.md) | M1 — 全面升级遥测：移除 KV、新增10类事件、站点/作者溯源、DAU统计 | ✅ 完成 |
 | **v8.3.0** | [implementation_plan.md](file:///Users/chen/.gemini/antigravity/brain/be08b881-8f93-49ed-a3fd-413ed10a1053/implementation_plan.md) | M4 — 播放器缓冲延迟与连接调度优化 | ✅ 完成 |

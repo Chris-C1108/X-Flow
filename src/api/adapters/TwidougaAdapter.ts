@@ -1,6 +1,6 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup } from './SiteAdapter';
 import { parseTwitterHandleFromUrl, normalizeVideoUrl } from './Helper';
 
 export class TwidougaAdapter implements SiteAdapter {
@@ -22,10 +22,6 @@ export class TwidougaAdapter implements SiteAdapter {
                 ]
             }
         ];
-    }
-
-    getHeroRanges(isAnime: boolean): HeroRange[] {
-        return []; // Hides carousel
     }
 
     async fetchList(params: FetchParams, isAnime: boolean): Promise<FetchListResult> {

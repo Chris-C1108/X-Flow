@@ -1,6 +1,6 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup } from './SiteAdapter';
 import { normalizeVideoUrl } from './Helper';
 
 interface UraakaTweet {
@@ -69,10 +69,6 @@ export class UraakaTimesAdapter implements SiteAdapter {
                 ]
             }
         ];
-    }
-
-    getHeroRanges(_isAnime: boolean): HeroRange[] {
-        return []; // No time-range based rankings on this site
     }
 
     async fetchList(params: FetchParams, _isAnime: boolean): Promise<FetchListResult> {

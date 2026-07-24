@@ -1,6 +1,6 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup } from './SiteAdapter';
 import { parseTwitterHandleFromUrl, normalizeVideoUrl } from './Helper';
 
 export class TwiigleAdapter implements SiteAdapter {
@@ -43,14 +43,6 @@ export class TwiigleAdapter implements SiteAdapter {
                     { id: 'op', label: '私处', en: 'Genitals' }
                 ]
             }
-        ];
-    }
-
-    getHeroRanges(isAnime: boolean): HeroRange[] {
-        return [
-            { id: 'index', label: '24小时', en: '24 Hours', icon: '⏱' },
-            { id: '1w', label: '周榜', en: 'Weekly', icon: '📅' },
-            { id: '3d', label: '殿堂', en: 'Hall of Fame', icon: '🏆' }
         ];
     }
 

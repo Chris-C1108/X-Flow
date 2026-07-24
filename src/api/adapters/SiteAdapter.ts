@@ -35,13 +35,6 @@ export interface FilterGroup {
     options: FilterOption[];
 }
 
-export interface HeroRange {
-    id: string;
-    label: string;
-    en: string;
-    icon: string;
-}
-
 export interface SiteAdapter {
     id: string;
     name: string;
@@ -52,7 +45,6 @@ export interface SiteAdapter {
     
     // UI Capabilities Configuration
     getFilterGroups?(isAnime: boolean): FilterGroup[];
-    getHeroRanges?(isAnime: boolean): HeroRange[];
     
     // Video Resolution & Lazy Details
     fetchDetailHtml?(postId: string): Promise<string>;

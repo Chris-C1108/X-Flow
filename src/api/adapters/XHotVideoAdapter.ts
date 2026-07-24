@@ -1,6 +1,6 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup } from './SiteAdapter';
 import { parseDuration, parseViews } from './Helper';
 
 export class XHotVideoAdapter implements SiteAdapter {
@@ -72,15 +72,6 @@ export class XHotVideoAdapter implements SiteAdapter {
                     { id: 'hamedori', label: '真实自拍' }
                 ]
             }
-        ];
-    }
-
-    getHeroRanges(isAnime: boolean): HeroRange[] {
-        return [
-            { id: 'day', label: '今日热门', en: 'Daily', icon: '⏱' },
-            { id: 'week', label: '本周热门', en: 'Weekly', icon: '📅' },
-            { id: 'month', label: '本月热门', en: 'Monthly', icon: '🗓' },
-            { id: 'total', label: '总热门', en: 'Total', icon: '🏆' }
         ];
     }
 

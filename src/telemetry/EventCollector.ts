@@ -84,7 +84,7 @@ const getScriptVersion = (): string => {
             return GM_info.script.version;
         }
     } catch (_) {}
-    return '6.2.7';
+    return '6.3.0';
 };
 
 export class EventCollector {
@@ -212,7 +212,7 @@ export class EventCollector {
         }
     }
 
-    trackTimeUpdate(currentTimeSec: number, duration: number): void {
+    trackTimeUpdate(currentTimeSec: number): void {
         if (!this.currentVideoId || !isFinite(currentTimeSec)) return;
 
         const bucketKey = Math.floor(currentTimeSec / 10);

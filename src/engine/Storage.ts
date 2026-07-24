@@ -2,10 +2,7 @@
  * 持久化存储 — localStorage + GM_setValue 双通道
  */
 export const STORAGE_KEYS = {
-    WATCHED: 'xflow_watched_videos_v5',
-    UNREAD_ONLY: 'xflow_unread_only',
     LOOP: 'xflow_loop',
-    BOOKMARKS: 'xflow_bookmarks_v1',
     BOOKMARKS_V2: 'xflow_bookmarks_v2',
     DOWNLOADED: 'xflow_downloaded_v1',
     LIKES: 'xflow_likes_v1',

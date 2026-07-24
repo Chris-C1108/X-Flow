@@ -1,6 +1,6 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
-import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
+import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup } from './SiteAdapter';
 
 export class MonsnodeAdapter implements SiteAdapter {
     id = 'monsnode';
@@ -41,14 +41,6 @@ export class MonsnodeAdapter implements SiteAdapter {
                     { id: 'favorite', label: '推荐排行' }
                 ]
             }
-        ];
-    }
-
-    getHeroRanges(isAnime: boolean): HeroRange[] {
-        return [
-            { id: '24h', label: '24小时榜', en: '24 Hours', icon: '⏱' },
-            { id: '3d', label: '3天榜', en: '3 Days', icon: '📅' },
-            { id: '7d', label: '周榜', en: 'Weekly', icon: '🏆' }
         ];
     }
 

@@ -162,9 +162,7 @@ export class Sandbox {
 
             // 短暂停留确保主界面已首次渲染
             setTimeout(() => {
-                splash.style.opacity = '0';
-                splash.style.transform = 'scale(1.04)';
-                splash.style.pointerEvents = 'none';
+                splash.classList.add('xflow-splash-hiding');
 
                 setTimeout(() => {
                     splash.remove();
@@ -240,17 +238,6 @@ export class Sandbox {
 
         const banner = document.createElement('div');
         banner.id = 'xflow-net-banner';
-        banner.style.cssText = [
-            'position: fixed; top: 0; left: 0; right: 0; z-index: 9999;',
-            'padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px 10px;',
-            'background: linear-gradient(135deg, rgba(255,60,80,0.92), rgba(200,40,60,0.92));',
-            'backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);',
-            'color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif;',
-            'font-size: 13px; font-weight: 500; text-align: center; line-height: 1.6;',
-            'box-shadow: 0 4px 24px rgba(0,0,0,0.3);',
-            'transform: translateY(-100%); animation: xf-banner-in 0.4s cubic-bezier(0.16,1,0.3,1) forwards;',
-        ].join('');
-
         banner.innerHTML = [
             '<div style="max-width:480px;margin:0 auto;">',
                 '<span style="font-weight:700;">⚠ 网络环境异常</span>',
@@ -266,29 +253,20 @@ export class Sandbox {
             '">✕</button>',
         ].join('');
 
-        // 注入关闭动画 keyframe
-        if (!document.getElementById('xflow-banner-style')) {
-            const s = document.createElement('style');
-            s.id = 'xflow-banner-style';
-            s.textContent = '@keyframes xf-banner-in{from{transform:translateY(-100%)}to{transform:translateY(0)}}';
-            document.head.appendChild(s);
-        }
-
         document.body.appendChild(banner);
 
-        // 关闭按钮
-        document.getElementById('xflow-net-banner-close')?.addEventListener('click', () => {
-            banner.style.transform = 'translateY(-100%)';
-            banner.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 1, 1)';
+        const closeBanner = () => {
+            banner.classList.add('hiding');
             setTimeout(() => banner.remove(), 350);
-        });
+        };
+
+        // 关闭按钮
+        document.getElementById('xflow-net-banner-close')?.addEventListener('click', closeBanner);
 
         // 15 秒后自动消失
         setTimeout(() => {
             if (banner.parentElement) {
-                banner.style.transform = 'translateY(-100%)';
-                banner.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 1, 1)';
-                setTimeout(() => banner.remove(), 350);
+                closeBanner();
             }
         }, 15000);
     }

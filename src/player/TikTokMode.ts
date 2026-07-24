@@ -1234,7 +1234,7 @@ export class TikTokMode {
             
             this.timeText.textContent = formatTime(video.currentTime) + ' / ' + formatTime(video.duration);
 
-            collector.trackTimeUpdate(video.currentTime, video.duration);
+            collector.trackTimeUpdate(video.currentTime);
 
             // Periodically cache video progress (throttled inside ProgressManager)
             ProgressManager.getInstance().saveProgress(videoId, video.currentTime, video.duration, false);
@@ -1654,10 +1654,12 @@ export class TikTokMode {
 
         const video = this.getCurrentVideo();
         const isPaused = video ? video.paused : true;
+        const isPanelOpen = !!modal.querySelector('.tm-comment-panel.active, .tm-author-panel.active, .tm-settings.active, .tm-speed-panel.active');
 
-        if (!isPaused) {
+        if (!isPaused && !isPanelOpen) {
             this.idleTimer = setTimeout(() => {
-                if (this.isOpen && video && !video.paused) {
+                const currentPanelOpen = !!modal.querySelector('.tm-comment-panel.active, .tm-author-panel.active, .tm-settings.active, .tm-speed-panel.active');
+                if (this.isOpen && video && !video.paused && !currentPanelOpen) {
                     modal.classList.add('tm-idle');
                 }
             }, 3000);
