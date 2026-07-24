@@ -87,6 +87,17 @@ const getScriptVersion = (): string => {
     return '6.3.0';
 };
 
+const CACHE_STORAGE_KEY = 'xflow_telemetry_cache_v2';
+const ONE_HOUR_MS = 60 * 60 * 1000;
+const MIN_FLUSH_INTERVAL_MS = 15 * 60 * 1000; // 离屏最少15分钟间隔
+
+interface TelemetryCache {
+    totalPlayedSec: number;
+    actionCounts: Record<string, number>;
+    videoHeat: Record<string, { total_sec: number; buckets: Record<string, number> }>;
+    lastFlushTs: number;
+}
+
 export class EventCollector {
     private readonly runtime: RuntimeAdapter;
     private anonId: string;
@@ -97,8 +108,9 @@ export class EventCollector {
     private currentVideoId: string = '';
     private sessionStart: number = 0;
     private actionCounts: Record<string, number> = {};
-    private videoHeat: Record<string, { total_sec: number; buckets: Record<number, number> }> = {};
+    private videoHeat: Record<string, { total_sec: number; buckets: Record<string, number> }> = {};
     private totalPlayedSec: number = 0;
+    private lastFlushTs: number = 0;
 
     private flushTimer: ReturnType<typeof setInterval> | null = null;
     private viewStartTimer: ReturnType<typeof setTimeout> | null = null;
@@ -106,11 +118,49 @@ export class EventCollector {
     constructor(runtime: RuntimeAdapter = getRuntimeAdapter()) {
         this.runtime = runtime;
         this.anonId = getOrCreateAnonId(runtime);
+        this.loadCache();
 
         if (typeof window !== 'undefined') {
-            window.addEventListener('beforeunload', () => this.flushSession());
-            window.addEventListener('pagehide', () => this.flushSession());
+            window.addEventListener('beforeunload', () => this.flushSession(true));
+            window.addEventListener('pagehide', () => this.flushSession(true));
         }
+    }
+
+    private loadCache(): void {
+        try {
+            const raw = this.runtime.storage.get<TelemetryCache | string>(CACHE_STORAGE_KEY, '');
+            let cache: TelemetryCache | null = null;
+            if (typeof raw === 'string' && raw) {
+                cache = JSON.parse(raw);
+            } else if (typeof raw === 'object' && raw) {
+                cache = raw as TelemetryCache;
+            }
+            if (cache) {
+                this.totalPlayedSec = cache.totalPlayedSec || 0;
+                this.actionCounts = cache.actionCounts || {};
+                this.videoHeat = cache.videoHeat || {};
+                this.lastFlushTs = cache.lastFlushTs || 0;
+            }
+        } catch (_) {}
+    }
+
+    private saveCache(): void {
+        try {
+            this.runtime.storage.set(CACHE_STORAGE_KEY, JSON.stringify({
+                totalPlayedSec: this.totalPlayedSec,
+                actionCounts: this.actionCounts,
+                videoHeat: this.videoHeat,
+                lastFlushTs: this.lastFlushTs
+            }));
+        } catch (_) {}
+    }
+
+    private clearCache(): void {
+        this.actionCounts = {};
+        this.videoHeat = {};
+        this.totalPlayedSec = 0;
+        this.lastFlushTs = Date.now();
+        this.saveCache();
     }
 
     setChannel(isAnime: boolean): void {
@@ -184,12 +234,8 @@ export class EventCollector {
     private sendInteract(videoId: string, action: string, extra: Record<string, unknown> = {}): void {
         if (!action) return;
         this.actionCounts[action] = (this.actionCounts[action] || 0) + 1;
-
-        if (action === 'app_init' || action === 'download' || action === 'bookmark_add') {
-            setTimeout(() => this.flushSession(), 1000);
-        } else if (this.actionCounts['view_start'] >= 10) {
-            this.flushSession();
-        }
+        this.saveCache();
+        this.checkPeriodicFlush();
     }
 
     // ── 播放会话追踪 ──────────────────────────────────────────────
@@ -204,7 +250,8 @@ export class EventCollector {
         this.sessionStart = Date.now();
 
         if (!this.flushTimer) {
-            this.flushTimer = setInterval(() => this.flushSession(), 15 * 60 * 1000); // 15分钟 Batch 刷写
+            // 每15分钟检查一次是否满足1小时定期上报规则
+            this.flushTimer = setInterval(() => this.checkPeriodicFlush(), 15 * 60 * 1000);
         }
     }
 
@@ -219,12 +266,30 @@ export class EventCollector {
         vEntry.buckets[bucketKey] = (vEntry.buckets[bucketKey] || 0) + 1;
         vEntry.total_sec++;
         this.totalPlayedSec++;
+        this.saveCache();
     }
 
-    flushSession(): void {
+    private checkPeriodicFlush(): void {
+        const now = Date.now();
+        if (now - this.lastFlushTs >= ONE_HOUR_MS) {
+            this.flushSession(false);
+        }
+    }
+
+    flushSession(isForce: boolean = false): void {
         const hasActions = Object.keys(this.actionCounts).length > 0;
         const hasVideoHeat = Object.keys(this.videoHeat).length > 0;
         if (!hasActions && !hasVideoHeat) return;
+
+        const now = Date.now();
+        // 如果非强制且距离上次上报未满1小时，放弃上报存本地
+        if (!isForce && now - this.lastFlushTs < ONE_HOUR_MS) {
+            return;
+        }
+        // 如果是强制离屏上报，但距离上次上报未满15分钟，也继续缓存在本地
+        if (isForce && now - this.lastFlushTs < MIN_FLUSH_INTERVAL_MS && this.totalPlayedSec < 30) {
+            return;
+        }
 
         const ts = Date.now();
         const dateObj = new Date(ts);
@@ -246,10 +311,8 @@ export class EventCollector {
             video_heat: { ...this.videoHeat }
         };
 
-        // 清空内存缓冲区
-        this.actionCounts = {};
-        this.videoHeat = {};
-        this.totalPlayedSec = 0;
+        // 清空本地缓存并持久化
+        this.clearCache();
 
         void this.postToWorker('/api/telemetry/batch', payload);
     }
