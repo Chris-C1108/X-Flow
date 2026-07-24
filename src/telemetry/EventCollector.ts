@@ -84,7 +84,7 @@ const getScriptVersion = (): string => {
             return GM_info.script.version;
         }
     } catch (_) {}
-    return '6.3.0';
+    return '6.3.1';
 };
 
 const CACHE_STORAGE_KEY = 'xflow_telemetry_cache_v2';
