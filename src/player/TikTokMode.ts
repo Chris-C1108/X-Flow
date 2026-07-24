@@ -213,11 +213,15 @@ export class TikTokMode {
         this.setupIdleTracker();
     }
 
-    public init() {
+    public ensureInDom() {
         const root = document.getElementById('xflow-app-root') || document.body;
         if (!root.contains(this.modal)) {
             root.appendChild(this.modal);
         }
+    }
+
+    public init() {
+        this.ensureInDom();
         this.bindEvents();
     }
 
@@ -857,6 +861,7 @@ export class TikTokMode {
     }
 
     public openModal(index: number, startTime?: number) {
+        this.ensureInDom();
         this.isOpen = true;
         this.modal.style.display = 'block';
         

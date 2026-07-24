@@ -29,6 +29,7 @@ export class Layout {
     private bookmarkFilterSite = 'all';
     private bookmarkSort = 'recent';
     private bookmarkIncludeDownloaded = true;
+    private globalEventsBound = false;
 
     private getActiveFilters(): any[] {
         const adapter = AdapterManager.getInstance().getActiveAdapter();
@@ -472,7 +473,10 @@ export class Layout {
             }
         });
 
-        document.addEventListener('click', () => closeAllDropdowns());
+        if (!this.globalEventsBound) {
+            this.globalEventsBound = true;
+            document.addEventListener('click', () => closeAllDropdowns());
+        }
 
         // Toggle dynamic filter panel next to section-title
         const filterToggleBtn = document.getElementById('filter-toggle-btn');
@@ -1013,7 +1017,7 @@ export class Layout {
             pv: b.pv,
             duration: b.duration,
             url: b.url,
-            isDetailsLoaded: true,
+            isDetailsLoaded: !!b.url,
             originalUrl: b.videoUrl
         }));
 
