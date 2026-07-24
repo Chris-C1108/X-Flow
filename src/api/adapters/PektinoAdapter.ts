@@ -1,7 +1,7 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
 import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
-import { normalizeVideoUrl } from './Helper';
+import { normalizeVideoUrl, getCanonicalVideoId } from './Helper';
 
 export class PektinoAdapter implements SiteAdapter {
     id = 'pektino';
@@ -117,8 +117,10 @@ export class PektinoAdapter implements SiteAdapter {
 
             const posts: UnifiedVideoItem[] = rawItems.map((item: any) => {
                 const urlCd = String(item.url_cd || item.id);
+                const normUrl = normalizeVideoUrl(item.url);
+                const canonicalId = getCanonicalVideoId({ id: urlCd, url: normUrl });
                 return {
-                    id: urlCd,
+                    id: canonicalId,
                     url_cd: urlCd,
                     thumbnail: item.thumbnail || '',
                     title: item.anime_title || (item.tweet_account ? `@${item.tweet_account} 的视频` : '免费视频'),
@@ -126,7 +128,7 @@ export class PektinoAdapter implements SiteAdapter {
                     favorite: Math.round(Number(item.favorite || 0)),
                     pv: Math.round(Number(item.pv || 0)),
                     duration: Math.round(Number(item.time || 0)),
-                    url: normalizeVideoUrl(item.url),
+                    url: normUrl,
                     isDetailsLoaded: !!item.url, // Instant play since CDN URL is in response
                     originalUrl: item.tweet_url || `https://x.com/i/status/${urlCd}`
                 };

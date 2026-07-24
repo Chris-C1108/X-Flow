@@ -4,6 +4,7 @@ import { log } from '../utils/Logger';
 import { getRuntimeAdapter } from '../runtime';
 import type { RuntimeAdapter } from '../runtime/adapter';
 import { AdapterManager } from './adapters/AdapterManager';
+import { getCanonicalVideoId } from './adapters/Helper';
 
 export interface LoadResult {
     fromCache: boolean;
@@ -235,6 +236,7 @@ export class PoolManager {
                     resolved = resolved.replace('http://', 'https://');
                 }
                 item.url = resolved;
+                item.id = getCanonicalVideoId(item);
             }
             item.isDetailsLoaded = true;
             this.detailListeners.forEach(cb => cb(item));

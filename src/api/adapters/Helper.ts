@@ -72,3 +72,38 @@ export function normalizeVideoUrl(url: string | null | undefined): string {
     }
     return cleaned;
 }
+
+/**
+ * 从 UnifiedVideoItem 中提取规范唯一的 video_id。
+ * 对于 video.twimg.com 类型的视频，提取完整的相对路径（如 amplify_video/2079457168697577472/vid/avc1/720x1280/foVKPpVJWvPm4umg.mp4），
+ * 以便遥测、D1 存储和 AI 推荐算法能够 100% 完整还原视频流播放 URL。
+ */
+export function getCanonicalVideoId(item: { id?: string; url_cd?: string; url?: string }): string {
+    if (!item) return '';
+    const url = item.url || '';
+    if (url && url.includes('video.twimg.com')) {
+        try {
+            const u = new URL(url);
+            const path = u.pathname.replace(/^\/+/, '');
+            if (path && path.length > 5) return path;
+        } catch {
+            const match = url.match(/(amplify_video|ext_tw_video|tweet_video)\/.+$/i);
+            if (match) return match[0].split('?')[0].replace(/^\/+/, '');
+        }
+    }
+    return String(item.id || item.url_cd || '');
+}
+
+/**
+ * 根据规范的 canonicalId 自动还原视频播放 URL。
+ */
+export function resolveUrlFromCanonicalId(canonicalId: string): string {
+    if (!canonicalId) return '';
+    if (canonicalId.startsWith('http://') || canonicalId.startsWith('https://')) {
+        return canonicalId;
+    }
+    if (canonicalId.includes('amplify_video/') || canonicalId.includes('ext_tw_video/') || canonicalId.includes('tweet_video/')) {
+        return `https://video.twimg.com/${canonicalId}`;
+    }
+    return '';
+}

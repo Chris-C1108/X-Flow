@@ -1,7 +1,7 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
 import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
-import { normalizeVideoUrl } from './Helper';
+import { normalizeVideoUrl, getCanonicalVideoId } from './Helper';
 
 export class NextApiAdapter implements SiteAdapter {
     id = 'nextapi';
@@ -91,8 +91,10 @@ export class NextApiAdapter implements SiteAdapter {
             const posts: UnifiedVideoItem[] = rawItems.map((item: any) => {
                 const tweetId = item.tweetId || item.mediaKey || String(Date.now());
                 const username = item.userName || 'unknown';
+                const normUrl = normalizeVideoUrl(item.bestVideoUrl);
+                const canonicalId = getCanonicalVideoId({ id: tweetId, url: normUrl });
                 return {
-                    id: tweetId,
+                    id: canonicalId,
                     url_cd: tweetId,
                     thumbnail: item.thumbnailUrl || '',
                     title: item.userDisplayName ? `${item.userDisplayName} (@${username})` : `@${username} 的视频`,
@@ -101,7 +103,7 @@ export class NextApiAdapter implements SiteAdapter {
                     favorite: Math.round(item.count || 0), // Next.js score
                     pv: Math.round(item.count || 0) * 10,  // Fake scale for display if raw pv missing
                     duration: 0,                           // Populated on play metadata load
-                    url: normalizeVideoUrl(item.bestVideoUrl), // Direct MP4 URL!
+                    url: normUrl,                          // Direct MP4 URL!
                     isDetailsLoaded: !!item.bestVideoUrl,  // Instant load!
                     originalUrl: `https://x.com/${username}/status/${tweetId}`
                 };

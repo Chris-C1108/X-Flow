@@ -46,15 +46,34 @@ function genToken(ts: number): string {
     return Math.abs(hash).toString(36);
 }
 
-function createAnonId(): string {
-    return 'xf_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+function getDeviceFingerprintString(): string {
+    const components: string[] = [];
+    try {
+        components.push(navigator.userAgent || '');
+        components.push(navigator.language || '');
+        components.push(String(navigator.hardwareConcurrency || 4));
+        components.push(`${window.screen ? window.screen.width : 0}x${window.screen ? window.screen.height : 0}`);
+        components.push(String(new Date().getTimezoneOffset()));
+    } catch (e) {
+        components.push('fp_err');
+    }
+    return components.join('||');
+}
+
+function simpleMd5(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
+    }
+    return Math.abs(hash).toString(36);
 }
 
 function getOrCreateAnonId(runtime: RuntimeAdapter): string {
     const existing = runtime.storage.get<string>(ANON_ID_STORAGE_KEY, '');
     if (existing) return existing;
 
-    const newId = createAnonId();
+    const fpString = getDeviceFingerprintString();
+    const newId = 'xf_' + simpleMd5(fpString) + '_' + Date.now().toString(36).slice(-4);
     runtime.storage.set(ANON_ID_STORAGE_KEY, newId);
     return newId;
 }
@@ -77,30 +96,31 @@ export class EventCollector {
 
     private currentVideoId: string = '';
     private sessionStart: number = 0;
-    private playBuckets: Record<number, number> = {};
+    private actionCounts: Record<string, number> = {};
+    private videoHeat: Record<string, { total_sec: number; buckets: Record<number, number> }> = {};
     private totalPlayedSec: number = 0;
 
     private flushTimer: ReturnType<typeof setInterval> | null = null;
     private viewStartTimer: ReturnType<typeof setTimeout> | null = null;
 
-    private lastInteractVideo: string = '';
-    private lastInteractTs: number = 0;
-
     constructor(runtime: RuntimeAdapter = getRuntimeAdapter()) {
         this.runtime = runtime;
         this.anonId = getOrCreateAnonId(runtime);
+
+        if (typeof window !== 'undefined') {
+            window.addEventListener('beforeunload', () => this.flushSession());
+            window.addEventListener('pagehide', () => this.flushSession());
+        }
     }
 
     setChannel(isAnime: boolean): void {
         this.channel = isAnime ? 'anime' : 'real';
     }
 
-    /** 设置当前活跃站点标识（来自 adapter.id 或 constructor name） */
     setSiteKey(siteKey: string): void {
         this.siteKey = siteKey;
     }
 
-    /** 设置当前视频的作者 ID（tweet_account），供事件附加 */
     setCurrentAuthor(authorId: string): void {
         this.currentAuthorId = authorId;
     }
@@ -125,51 +145,36 @@ export class EventCollector {
             this.viewStartTimer = null;
         }
 
-        // Delay view_start reporting by 2 seconds to filter out rapid scroll-past events
         this.viewStartTimer = setTimeout(() => {
-            if (videoId === this.lastInteractVideo && Date.now() - this.lastInteractTs < 5000) return;
             this.sendInteract(videoId, 'view_start');
             this.viewStartTimer = null;
         }, 2000);
     }
 
-    /** 用户通过面板选择倍速时上报（不追踪长按临时加速） */
     trackSpeedChange(videoId: string, rate: number): void {
         this.sendInteract(videoId, 'speed_change', { speed: rate });
     }
 
-    /** 用户打开博主作者面板时上报 */
     trackAuthorView(authorId: string, videoId: string): void {
         this.sendInteract(videoId, 'author_view', { author_id: authorId });
     }
 
-    /** 用户在博主面板批量复制链接时上报 */
     trackBatchCopy(authorId: string, count: number): void {
         this.sendInteract('', 'batch_copy', { author_id: authorId, count });
     }
 
-    /** 用户进入画中画模式时上报 */
     trackPiP(videoId: string): void {
         this.sendInteract(videoId, 'pip_enter');
     }
 
-    /** 用户切换频道（Real <-> Anime）时上报 */
     trackChannelSwitch(from: 'real' | 'anime', to: 'real' | 'anime'): void {
         this.sendInteract('', 'channel_switch', { from, to });
     }
 
-    /**
-     * 脚本初始化心跳 — 在页面加载完成后调用一次。
-     * 用于统计：
-     *   - 脚本总日活终端数（distinct anon_id per day）
-     *   - 各站点日活（distinct anon_id per site_key per day）
-     * 防重复：同一终端每 6 小时最多发送一次（避免刷新轰炸 D1）
-     */
     trackAppInit(siteKey: string): void {
         const storageKey = 'xflow_app_init_ts';
         const lastSent = parseInt(this.runtime.storage.get<string>(storageKey, '0') || '0', 10);
         const now = Date.now();
-        // 6 小时防重发（6 * 60 * 60 * 1000）
         if (now - lastSent < 6 * 3600 * 1000) return;
         this.runtime.storage.set(storageKey, String(now));
         this.setSiteKey(siteKey);
@@ -177,27 +182,22 @@ export class EventCollector {
     }
 
     private sendInteract(videoId: string, action: string, extra: Record<string, unknown> = {}): void {
-        this.lastInteractVideo = videoId;
-        this.lastInteractTs = Date.now();
+        if (!action) return;
+        this.actionCounts[action] = (this.actionCounts[action] || 0) + 1;
 
-        void this.postToWorker('/api/telemetry/interact', {
-            anon_id: this.anonId,
-            video_id: videoId,
-            action,
-            ts: this.lastInteractTs,
-            hour_of_day: new Date().getHours(),
-            channel: this.channel,
-            site_key: this.siteKey,
-            author_id: extra.author_id !== undefined ? extra.author_id : this.currentAuthorId,
-            version: getScriptVersion(),
-            ...extra,
-        });
+        if (action === 'app_init' || action === 'download' || action === 'bookmark_add') {
+            setTimeout(() => this.flushSession(), 1000);
+        } else if (this.actionCounts['view_start'] >= 10) {
+            this.flushSession();
+        }
     }
 
     // ── 播放会话追踪 ──────────────────────────────────────────────
 
     startSession(videoId: string): void {
-        this.flushSession();
+        if (this.currentVideoId && this.currentVideoId !== videoId) {
+            this.flushSession();
+        }
 
         if (this.viewStartTimer) {
             clearTimeout(this.viewStartTimer);
@@ -206,40 +206,56 @@ export class EventCollector {
 
         this.currentVideoId = videoId;
         this.sessionStart = Date.now();
-        this.playBuckets = {};
-        this.totalPlayedSec = 0;
 
-        if (this.flushTimer) clearInterval(this.flushTimer);
-        this.flushTimer = setInterval(() => this.flushSession(), 30_000);
+        if (!this.flushTimer) {
+            this.flushTimer = setInterval(() => this.flushSession(), 15 * 60 * 1000); // 15分钟 Batch 刷写
+        }
     }
 
     trackTimeUpdate(currentTimeSec: number, duration: number): void {
         if (!this.currentVideoId || !isFinite(currentTimeSec)) return;
 
         const bucketKey = Math.floor(currentTimeSec / 10);
-        this.playBuckets[bucketKey] = (this.playBuckets[bucketKey] || 0) + 1;
+        if (!this.videoHeat[this.currentVideoId]) {
+            this.videoHeat[this.currentVideoId] = { total_sec: 0, buckets: {} };
+        }
+        const vEntry = this.videoHeat[this.currentVideoId];
+        vEntry.buckets[bucketKey] = (vEntry.buckets[bucketKey] || 0) + 1;
+        vEntry.total_sec++;
         this.totalPlayedSec++;
     }
 
     flushSession(): void {
-        if (!this.currentVideoId || Object.keys(this.playBuckets).length === 0) return;
+        const hasActions = Object.keys(this.actionCounts).length > 0;
+        const hasVideoHeat = Object.keys(this.videoHeat).length > 0;
+        if (!hasActions && !hasVideoHeat) return;
 
-        const duration = Math.round((Date.now() - this.sessionStart) / 1000);
-        void this.postToWorker('/api/telemetry/session', {
+        const ts = Date.now();
+        const dateObj = new Date(ts);
+        const dateStr = dateObj.toISOString().slice(0, 10);
+        const hourOfDay = dateObj.getHours();
+        const sessionId = `xf_${this.anonId}_${dateStr}_${hourOfDay}`;
+
+        const payload = {
             anon_id: this.anonId,
-            video_id: this.currentVideoId,
-            session_ts: this.sessionStart,
-            duration,
-            played_sec: this.totalPlayedSec,
-            buckets: this.playBuckets,
+            session_id: sessionId,
+            date: dateStr,
+            ts,
+            hour_of_day: hourOfDay,
             channel: this.channel,
             site_key: this.siteKey,
             version: getScriptVersion(),
-        });
+            total_play_sec: this.totalPlayedSec,
+            action_counts: { ...this.actionCounts },
+            video_heat: { ...this.videoHeat }
+        };
 
-        this.playBuckets = {};
+        // 清空内存缓冲区
+        this.actionCounts = {};
+        this.videoHeat = {};
         this.totalPlayedSec = 0;
-        this.currentVideoId = '';
+
+        void this.postToWorker('/api/telemetry/batch', payload);
     }
 
     // ── 网络传输 ──────────────────────────────────────────────────

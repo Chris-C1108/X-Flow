@@ -1,7 +1,7 @@
 import { getRuntimeAdapter } from '../../runtime';
 import { FetchParams } from '../ApiClient';
 import { SiteAdapter, FetchListResult, UnifiedVideoItem, FilterGroup, HeroRange } from './SiteAdapter';
-import { normalizeVideoUrl } from './Helper';
+import { normalizeVideoUrl, getCanonicalVideoId } from './Helper';
 
 export class JavtwiAdapter implements SiteAdapter {
     id = 'javtwi';
@@ -70,8 +70,11 @@ export class JavtwiAdapter implements SiteAdapter {
                 const rankText = rankEl && rankEl.classList.contains('center_text_rank') ? rankEl.textContent?.trim() : '';
                 const title = rankText ? `${rankText} - JAVTWI Video ${id}` : `JAVTWI Video ${id}`;
 
+                const normUrl = normalizeVideoUrl(videoUrl);
+                const canonicalId = getCanonicalVideoId({ id, url: normUrl });
+
                 posts.push({
-                    id,
+                    id: canonicalId,
                     url_cd: id,
                     thumbnail: thumb,
                     title: title,
@@ -79,7 +82,7 @@ export class JavtwiAdapter implements SiteAdapter {
                     favorite: 0,
                     pv: 0,
                     duration: 0,
-                    url: normalizeVideoUrl(videoUrl), // Direct video URL!
+                    url: normUrl, // Direct video URL!
                     isDetailsLoaded: true, // Direct play!
                     originalUrl: undefined
                 });

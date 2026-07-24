@@ -29,13 +29,10 @@ const ALLOWED_ORIGINS = [
 
 // ── CORS Headers ─────────────────────────────────────────────────
 function getCorsHeaders(origin: string | null): HeadersInit {
-    const allowed = origin && ALLOWED_ORIGINS.some(o => origin.startsWith(o))
-        ? origin
-        : ALLOWED_ORIGINS[0];
     return {
-        'Access-Control-Allow-Origin': allowed,
+        'Access-Control-Allow-Origin': origin || '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, X-XFlow-Token, X-XFlow-Ts',
+        'Access-Control-Allow-Headers': 'Content-Type, X-XFlow-Token, X-XFlow-Ts, X-MP-Token, X-MP-Ts',
         'Access-Control-Max-Age': '86400',
     };
 }
@@ -60,9 +57,9 @@ function isValidToken(token: string | null, tsStr: string | null): boolean {
 
 
 // ── 参数校验工具 ──────────────────────────────────────────────────
-function sanitizeStr(val: unknown, maxLen = 64): string {
+function sanitizeStr(val: unknown, maxLen = 256): string {
     if (typeof val !== 'string') return '';
-    return val.slice(0, maxLen).replace(/[^\w\-_.]/g, '');
+    return val.slice(0, maxLen).replace(/[^\w\-./@:=?]/g, '');
 }
 
 function sanitizeInt(val: unknown, min = 0, max = 999999): number {
@@ -202,6 +199,52 @@ async function handleSession(req: Request, env: Env): Promise<Response> {
     });
 }
 
+/** POST /api/telemetry/batch — X-Flow 聚合遥测上报 (1小时/Session 1行 UPSERT) */
+async function handleXfBatch(req: Request, env: Env): Promise<Response> {
+    let body: any;
+    try {
+        body = await req.json();
+    } catch {
+        return new Response('Bad JSON', { status: 400 });
+    }
+
+    const anonId = sanitizeStr(body.anon_id, 48);
+    const ts = sanitizeInt(body.ts || Date.now(), 0, 9999999999999);
+    const dateStr = sanitizeStr(body.date || new Date(ts).toISOString().slice(0, 10), 10);
+    const hourOfDay = sanitizeInt(body.hour_of_day ?? new Date(ts).getHours(), 0, 23);
+    const sessionId = sanitizeStr(body.session_id || `xf_${anonId}_${dateStr}_${hourOfDay}`, 128);
+    const channel = body.channel === 'anime' ? 'anime' : 'real';
+    const siteKey = sanitizeStr(body.site_key, 32);
+    const version = sanitizeStr(body.version, 16);
+    const totalPlaySec = sanitizeInt(body.total_play_sec || 0, 0, 86400);
+
+    if (!anonId) {
+        return new Response('Missing anon_id', { status: 422 });
+    }
+
+    const actionCountsStr = typeof body.action_counts === 'object'
+        ? JSON.stringify(body.action_counts).slice(0, 4096)
+        : (typeof body.action_counts === 'string' ? body.action_counts.slice(0, 4096) : '{}');
+
+    const videoHeatStr = typeof body.video_heat === 'object'
+        ? JSON.stringify(body.video_heat).slice(0, 16384)
+        : (typeof body.video_heat === 'string' ? body.video_heat.slice(0, 16384) : '{}');
+
+    await env.DB.prepare(`
+        INSERT INTO xf_events (anon_id, session_id, date, ts, channel, site_key, version, total_play_sec, action_counts, video_heat)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(session_id) DO UPDATE SET
+            ts = excluded.ts,
+            total_play_sec = xf_events.total_play_sec + excluded.total_play_sec,
+            action_counts = excluded.action_counts,
+            video_heat = excluded.video_heat
+    `).bind(anonId, sessionId, dateStr, ts, channel, siteKey, version, totalPlaySec, actionCountsStr, videoHeatStr).run();
+
+    return new Response(JSON.stringify({ ok: true }), {
+        headers: { 'Content-Type': 'application/json' },
+    });
+}
+
 /** GET /api/recommend — 拉取推荐结果 */
 async function handleRecommend(req: Request, env: Env): Promise<Response> {
     const url    = new URL(req.url);
@@ -214,13 +257,12 @@ async function handleRecommend(req: Request, env: Env): Promise<Response> {
     }
 
     let row = await env.DB.prepare(
-        'SELECT rec_video_ids, highlight_map FROM recommendations WHERE anon_id = ?'
+        'SELECT rec_video_ids, highlight_map FROM xf_recommendations WHERE anon_id = ?'
     ).bind(anonId).first<{ rec_video_ids: string; highlight_map: string }>();
 
-    // 如果用户不存在推荐数据，或者推荐列表为空，则回退到全局推荐 (GLOBAL_DEFAULT)
     if (!row || !row.rec_video_ids || JSON.parse(row.rec_video_ids).length === 0) {
         row = await env.DB.prepare(
-            'SELECT rec_video_ids, highlight_map FROM recommendations WHERE anon_id = ?'
+            'SELECT rec_video_ids, highlight_map FROM xf_recommendations WHERE anon_id = ?'
         ).bind('GLOBAL_DEFAULT').first<{ rec_video_ids: string; highlight_map: string }>();
     }
 
@@ -231,6 +273,116 @@ async function handleRecommend(req: Request, env: Env): Promise<Response> {
 
     return new Response(JSON.stringify(result), {
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+    });
+}
+
+/** POST /api/mp/telemetry/events — Miss_Player 遥测事件上报 */
+async function handleMpEvents(req: Request, env: Env): Promise<Response> {
+    let body: any;
+    try {
+        body = await req.json();
+    } catch {
+        return new Response('Bad JSON', { status: 400 });
+    }
+
+    const events: any[] = Array.isArray(body) ? body : (body.events && Array.isArray(body.events)) ? body.events : [body];
+    if (events.length === 0) {
+        return new Response('Empty events', { status: 422 });
+    }
+
+    const sqls = [];
+    const now = Date.now();
+
+    for (const item of events) {
+        if (!item || typeof item !== 'object') continue;
+        const clientId     = sanitizeStr(item.client_id, 64);
+        const ts           = sanitizeInt(item.ts || now, 0, 9999999999999);
+        const hourOfDay    = sanitizeInt(item.hour_of_day ?? new Date(ts).getHours(), 0, 23);
+        const host         = sanitizeStr(item.host, 64);
+        const siteCategory = sanitizeStr(item.site_category, 32) || 'GENERIC';
+        const avcode       = sanitizeStr(item.avcode, 32);
+        const eventType    = sanitizeStr(item.event_type, 64);
+        const scriptVersion = sanitizeStr(item.script_version, 16);
+        const deviceType   = sanitizeStr(item.device_type, 32);
+
+        let eventValueStr = '{}';
+        if (item.event_value && typeof item.event_value === 'object') {
+            eventValueStr = JSON.stringify(item.event_value).slice(0, 2048);
+        } else if (typeof item.event_value === 'string') {
+            eventValueStr = item.event_value.slice(0, 2048);
+        }
+
+        if (!clientId) continue;
+        if (!item.is_session_summary && !item.session_id && !eventType) continue;
+
+        const isAppInit = eventType === 'app_init' || (item.event_counts && item.event_counts.app_init > 0);
+
+        // 仅在 App 初始化心跳时更新 mp_users 用户画像表，避免重复写库消耗 D1 配额
+        if (isAppInit) {
+            const loginPeriod = hourOfDay >= 22 || hourOfDay < 2 ? 'late_night'
+                              : hourOfDay < 6   ? 'early_morning'
+                              : hourOfDay < 12  ? 'morning'
+                              : hourOfDay < 18  ? 'afternoon'
+                              : 'evening';
+            const ua = sanitizeStr(item.user_agent || '', 256);
+            sqls.push(
+                env.DB.prepare(`
+                    INSERT INTO mp_users (client_id, first_seen, last_seen, session_count, dominant_period, user_agent, device_fp)
+                    VALUES (?, ?, ?, 1, ?, ?, ?)
+                    ON CONFLICT(client_id) DO UPDATE SET
+                        last_seen = excluded.last_seen,
+                        session_count = session_count + 1,
+                        dominant_period = excluded.dominant_period,
+                        user_agent = CASE WHEN excluded.user_agent != '' THEN excluded.user_agent ELSE mp_users.user_agent END
+                `).bind(clientId, ts, ts, loginPeriod, ua, clientId)
+            );
+        }
+
+        // 检查是否为合并的 Session / 聚合数据包
+        if (item.is_session_summary || item.session_id) {
+            const sessionId = sanitizeStr(item.session_id || `${clientId}_${new Date(ts).toISOString().slice(0, 10)}_${hourOfDay}`, 128);
+            const dateStr = sanitizeStr(item.date || new Date(ts).toISOString().slice(0, 10), 10);
+            const totalPlaySec = sanitizeInt(item.total_play_sec || 0, 0, 86400);
+            const eventCountsStr = typeof item.event_counts === 'object' ? JSON.stringify(item.event_counts).slice(0, 4096) : (typeof item.event_counts === 'string' ? item.event_counts.slice(0, 4096) : '{}');
+            const avcodesStr = Array.isArray(item.avcodes) ? JSON.stringify(item.avcodes).slice(0, 2048) : '[]';
+            const detailsJsonStr = typeof item.details_json === 'object' ? JSON.stringify(item.details_json).slice(0, 8192) : '{}';
+
+            sqls.push(
+                env.DB.prepare(`
+                    INSERT INTO mp_sessions (client_id, session_id, date, ts, hour_of_day, host, site_category, script_version, device_type, total_play_sec, event_counts, avcodes, details_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(session_id) DO UPDATE SET
+                        ts = excluded.ts,
+                        total_play_sec = mp_sessions.total_play_sec + excluded.total_play_sec,
+                        event_counts = excluded.event_counts,
+                        avcodes = excluded.avcodes,
+                        details_json = excluded.details_json
+                `).bind(clientId, sessionId, dateStr, ts, hourOfDay, host, siteCategory, scriptVersion, deviceType, totalPlaySec, eventCountsStr, avcodesStr, detailsJsonStr)
+            );
+        } else if (eventType) {
+            // 单条原始事件（可选）
+            sqls.push(
+                env.DB.prepare(`
+                    INSERT INTO mp_events (client_id, ts, hour_of_day, host, site_category, avcode, event_type, event_value, script_version, device_type)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `).bind(clientId, ts, hourOfDay, host, siteCategory, avcode, eventType, eventValueStr, scriptVersion, deviceType)
+            );
+        }
+    }
+
+    if (sqls.length > 0) {
+        if (sqls.length === 1) {
+            await sqls[0].run();
+        } else {
+            for (let i = 0; i < sqls.length; i += 50) {
+                await env.DB.batch(sqls.slice(i, i + 50));
+            }
+        }
+    }
+    console.log(`[handleMpEvents] Received ${events.length} items, created ${sqls.length} SQLs`);
+
+    return new Response(JSON.stringify({ ok: true, count: sqls.length }), {
+        headers: { 'Content-Type': 'application/json' },
     });
 }
 
@@ -255,11 +407,9 @@ export default {
             });
         }
 
-
-
         // Token 验证
-        const token = request.headers.get('X-XFlow-Token');
-        const ts    = request.headers.get('X-XFlow-Ts');
+        const token = request.headers.get('X-XFlow-Token') || request.headers.get('X-MP-Token');
+        const ts    = request.headers.get('X-XFlow-Ts') || request.headers.get('X-MP-Ts');
         if (!isValidToken(token, ts)) {
             return new Response('Unauthorized', { status: 401, headers: cors });
         }
@@ -267,7 +417,11 @@ export default {
         // 路由分发
         let resp: Response;
         try {
-            if (path === '/api/telemetry/interact' && method === 'POST') {
+            if (path === '/api/telemetry/batch' && method === 'POST') {
+                resp = await handleXfBatch(request, env);
+            } else if (path === '/api/mp/telemetry/events' && method === 'POST') {
+                resp = await handleMpEvents(request, env);
+            } else if (path === '/api/telemetry/interact' && method === 'POST') {
                 resp = await handleInteract(request, env);
             } else if (path === '/api/telemetry/session' && method === 'POST') {
                 resp = await handleSession(request, env);
