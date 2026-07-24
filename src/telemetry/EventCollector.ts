@@ -195,10 +195,6 @@ export class EventCollector {
     // ── 播放会话追踪 ──────────────────────────────────────────────
 
     startSession(videoId: string): void {
-        if (this.currentVideoId && this.currentVideoId !== videoId) {
-            this.flushSession();
-        }
-
         if (this.viewStartTimer) {
             clearTimeout(this.viewStartTimer);
             this.viewStartTimer = null;

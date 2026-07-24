@@ -222,13 +222,52 @@ async function handleXfBatch(req: Request, env: Env): Promise<Response> {
         return new Response('Missing anon_id', { status: 422 });
     }
 
-    const actionCountsStr = typeof body.action_counts === 'object'
-        ? JSON.stringify(body.action_counts).slice(0, 4096)
-        : (typeof body.action_counts === 'string' ? body.action_counts.slice(0, 4096) : '{}');
+    // 1. 读取数据库中已有的 session 数据 (避免覆盖同 session 内前序视频的历史热度与行为)
+    const existing = await env.DB.prepare(
+        `SELECT action_counts, video_heat FROM xf_events WHERE session_id = ?`
+    ).bind(sessionId).first<{ action_counts: string; video_heat: string }>();
 
-    const videoHeatStr = typeof body.video_heat === 'object'
-        ? JSON.stringify(body.video_heat).slice(0, 16384)
-        : (typeof body.video_heat === 'string' ? body.video_heat.slice(0, 16384) : '{}');
+    let mergedActionCounts: Record<string, number> = {};
+    let mergedVideoHeat: Record<string, { total_sec: number; buckets: Record<string, number> }> = {};
+
+    if (existing) {
+        try { mergedActionCounts = JSON.parse(existing.action_counts || '{}'); } catch (_) {}
+        try { mergedVideoHeat = JSON.parse(existing.video_heat || '{}'); } catch (_) {}
+    }
+
+    // 2. 深度合并 incoming action_counts
+    const incomingActionCounts = typeof body.action_counts === 'object' ? body.action_counts : {};
+    for (const [k, v] of Object.entries(incomingActionCounts)) {
+        const count = typeof v === 'number' ? v : 0;
+        mergedActionCounts[k] = (mergedActionCounts[k] || 0) + count;
+    }
+
+    // 3. 深度合并 incoming video_heat (保留相对全路径 key，并累加 total_sec 与时间轴 buckets)
+    const incomingVideoHeat = typeof body.video_heat === 'object' ? body.video_heat : {};
+    for (const [vId, vObj] of Object.entries(incomingVideoHeat)) {
+        if (!vObj || typeof vObj !== 'object') continue;
+        const cleanVId = sanitizeStr(vId, 256);
+        if (!cleanVId) continue;
+
+        if (!mergedVideoHeat[cleanVId]) {
+            mergedVideoHeat[cleanVId] = { total_sec: 0, buckets: {} };
+        }
+        const target = mergedVideoHeat[cleanVId];
+        const totalSec = typeof (vObj as any).total_sec === 'number' ? (vObj as any).total_sec : 0;
+        target.total_sec = (target.total_sec || 0) + totalSec;
+
+        const buckets = (vObj as any).buckets;
+        if (buckets && typeof buckets === 'object') {
+            if (!target.buckets) target.buckets = {};
+            for (const [bKey, bVal] of Object.entries(buckets)) {
+                const bNum = typeof bVal === 'number' ? bVal : 0;
+                target.buckets[bKey] = (target.buckets[bKey] || 0) + bNum;
+            }
+        }
+    }
+
+    const actionCountsStr = JSON.stringify(mergedActionCounts).slice(0, 8192);
+    const videoHeatStr = JSON.stringify(mergedVideoHeat).slice(0, 32768);
 
     await env.DB.prepare(`
         INSERT INTO xf_events (anon_id, session_id, date, ts, channel, site_key, version, total_play_sec, action_counts, video_heat)
