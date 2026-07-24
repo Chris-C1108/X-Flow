@@ -109,6 +109,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 
 | 版本 | 设计/计划文档 | 当前阶段 | 整体进度 |
 |------|---------------|----------|----------|
+| **v6.3.2** | [2026-07-25_开发日志.md](file:///d:/01_Development/X-Flow/workers/dev-log/2026-07-25_%E5%BC%80%E5%8F%91%E6%97%A5%E5%BF%97.md) | 高分屏视频容器 min-height 视口截断与 Ponytail Audit 精简 | ✅ 完成 |
 | **v6.3.1** | [2026-07-25_开发日志.md](file:///d:/01_Development/X-Flow/workers/dev-log/2026-07-25_%E5%BC%80%E5%8F%91%E6%97%A5%E5%BF%97.md) | 遥测数据全路径提取、JSON 深度合并与 Storage 1小时定期上报重构 | ✅ 完成 |
 | **v6.3.0** | [implementation_plan.md](file:///C:/Users/chenahao/.gemini/antigravity/brain/dfad1799-511e-4b76-bb07-9728e5127143/implementation_plan.md) | Ponytail Audit 重构瘦身与 JS 动效 CSS 化/闲置遮罩优化 | ✅ 完成 |
 | **v8.5.0** | [implementation_plan.md](file:///C:/Users/chenahao/.gemini/antigravity/brain/87d7cee9-b84f-46a7-9918-82babefd1ff9/implementation_plan.md) | M1 — 遥测表精简与 Session JSON 宽表重构 (xf_events) | ✅ 完成 |
