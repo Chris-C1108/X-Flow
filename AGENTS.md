@@ -27,14 +27,8 @@ X-Flow/
 ├── vite.config.ts         # Vite + vite-plugin-monkey 配置
 ├── package.json           # npm 依赖
 ├── .github/
-│   └── workflows/
-│       └── analyze.yml    # GitHub Actions 每日分析定时任务
+│   └── workflows/         # GitHub Actions 定时任务
 ├── workers/               # Cloudflare Worker 后端
-│   ├── src/index.ts       # ⭐ Worker 路由 — /api/telemetry/* + /api/recommend
-│   ├── schema.sql         # D1 数据库表结构（4张表）
-│   └── wrangler.toml      # CF Worker 部署配置（含 D1 / KV 绑定）
-├── scripts/
-│   └── analyze.py         # Python 离线分析（高光提取 + 协同过滤 → 写回 D1）
 └── src/
     ├── main.ts            # Entry point — 调用 Sandbox.initialize()
     ├── api/
@@ -109,6 +103,7 @@ npm run build            # 构建生产 .user.js 到 dist/
 
 | 版本 | 设计/计划文档 | 当前阶段 | 整体进度 |
 |------|---------------|----------|----------|
+| **v6.3.3** | [walkthrough.md](file:///C:/Users/chenahao/.gemini/antigravity/brain/7161eec5-dd3c-4717-b276-399c8d8a5ab4/walkthrough.md) | 统一遥测方案重构 (AE + D1 混合架构、删除推荐算法、单宽表合并) | ✅ 完成 |
 | **v6.3.2** | [2026-07-25_开发日志.md](file:///d:/01_Development/X-Flow/workers/dev-log/2026-07-25_%E5%BC%80%E5%8F%91%E6%97%A5%E5%BF%97.md) | 高分屏视频容器 min-height 视口截断与 Ponytail Audit 精简 | ✅ 完成 |
 | **v6.3.1** | [2026-07-25_开发日志.md](file:///d:/01_Development/X-Flow/workers/dev-log/2026-07-25_%E5%BC%80%E5%8F%91%E6%97%A5%E5%BF%97.md) | 遥测数据全路径提取、JSON 深度合并与 Storage 1小时定期上报重构 | ✅ 完成 |
 | **v6.3.0** | [implementation_plan.md](file:///C:/Users/chenahao/.gemini/antigravity/brain/dfad1799-511e-4b76-bb07-9728e5127143/implementation_plan.md) | Ponytail Audit 重构瘦身与 JS 动效 CSS 化/闲置遮罩优化 | ✅ 完成 |

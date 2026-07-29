@@ -1417,34 +1417,9 @@ export class TikTokMode {
         el.addEventListener('animationend', () => el.remove());
     }
 
-    // ── M2-3: 高光打点 ──────────────────────────────────────
-    private async renderHighlightMarkers(videoId: string) {
+    // ── M2-3: 高光打点 (架构精简 - 已停用) ──
+    private async renderHighlightMarkers(_videoId: string) {
         this.clearHighlightMarkers();
-        try {
-            const result = await collector.fetchRecommendations();
-            const segments = result.highlights[videoId];
-            if (!segments || !segments.length) return;
-
-            const video = this.getCurrentVideo();
-            if (!video || !video.duration || !isFinite(video.duration)) return;
-
-            const progressTrack = this.uiLayer.querySelector('.tm-progress') as HTMLElement;
-            if (!progressTrack) return;
-
-            for (const seg of segments) {
-                const midpoint = (seg.start + seg.end) / 2;
-                const pct = (midpoint / video.duration) * 100;
-                if (pct < 0 || pct > 100) continue;
-
-                const marker = document.createElement('div');
-                marker.className = 'tm-highlight-marker';
-                marker.style.left = pct + '%';
-                progressTrack.appendChild(marker);
-                this.highlightMarkers.push(marker);
-            }
-        } catch {
-            // 静默失败，不影响播放主流程
-        }
     }
 
     private clearHighlightMarkers() {
