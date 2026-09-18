@@ -146,7 +146,7 @@ const _htmlContent = [
         "default-src 'self' 'unsafe-inline' data: blob:; " +
         "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
         "frame-src 'none'; " +
-        `connect-src 'self' ${window.location.origin} https://video.twimg.com https://pbs.twimg.com https://fonts.googleapis.com https://fonts.gstatic.com https://xflow-telemetry.chen-m1108.workers.dev https://telemetry.x-flow.ccwu.cc https://x-flow.ccwu.cc; ` +
+        `connect-src 'self' ${window.location.origin} https://video.twimg.com https://pbs.twimg.com https://fonts.googleapis.com https://fonts.gstatic.com ` +
         `img-src 'self' ${window.location.origin} https://pbs.twimg.com data: blob:; ` +
         `media-src 'self' ${window.location.origin} https://video.twimg.com blob:; ` +
         `style-src 'self' 'unsafe-inline' ${window.location.origin} https://fonts.googleapis.com; ` +
@@ -334,7 +334,7 @@ const _verifyAndRecover = () => {
         csp.content = "default-src 'self' 'unsafe-inline' data: blob:; " +
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
             "frame-src 'none'; " +
-            `connect-src 'self' ${window.location.origin} https://video.twimg.com https://pbs.twimg.com https://fonts.googleapis.com https://fonts.gstatic.com https://xflow-telemetry.chen-m1108.workers.dev https://telemetry.x-flow.ccwu.cc https://x-flow.ccwu.cc; ` +
+            `connect-src 'self' ${window.location.origin} https://video.twimg.com https://pbs.twimg.com https://fonts.googleapis.com https://fonts.gstatic.com ` +
             `img-src 'self' ${window.location.origin} https://pbs.twimg.com data: blob:; ` +
             `media-src 'self' ${window.location.origin} https://video.twimg.com blob:; ` +
             `style-src 'self' 'unsafe-inline' ${window.location.origin} https://fonts.googleapis.com; ` +

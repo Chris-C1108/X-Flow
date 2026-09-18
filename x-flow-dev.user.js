@@ -21,9 +21,6 @@
 // @connect      pbs.twimg.com
 // @connect      truvaze.com
 // @connect      twihub.net
-// @connect      telemetry.x-flow.ccwu.cc
-// @connect      x-flow.ccwu.cc
-// @connect      xflow-telemetry.chen-m1108.workers.dev
 // @connect      *
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue

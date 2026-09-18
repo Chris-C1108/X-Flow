@@ -1,7 +1,9 @@
 import { defineConfig } from 'vite';
 import monkey from 'vite-plugin-monkey';
 import basicSsl from '@vitejs/plugin-basic-ssl';
-import obfuscator from 'rollup-plugin-obfuscator';
+import { transformSync } from 'esbuild';
+import fs from 'fs';
+import path from 'path';
 
 const earlyBootstrapBanner = `;(() => {
   try {
@@ -33,9 +35,32 @@ const earlyBootstrapBanner = `;(() => {
   } catch (_) {}
 })();`;
 
+
+function stripCommentsPlugin() {
+  return {
+    name: 'strip-userscript-comments',
+    closeBundle() {
+      const filePath = path.resolve(__dirname, 'dist/userscript/x-flow.user.js');
+      if (!fs.existsSync(filePath)) return;
+      const fileContent = fs.readFileSync(filePath, 'utf-8');
+      const headerMatch = fileContent.match(/^([\s\S]*?\/\/ ==\/UserScript==\r?\n?)/);
+      const header = headerMatch ? headerMatch[1] : '';
+      const body = headerMatch ? fileContent.slice(headerMatch[0].length) : fileContent;
+      const stripped = transformSync(body, {
+        legalComments: 'none',
+        minifyWhitespace: false,
+        minifyIdentifiers: false,
+        minifySyntax: false,
+      }).code;
+      fs.writeFileSync(filePath, header + '\n' + stripped.trimStart() + '\n', 'utf-8');
+    }
+  };
+}
+
 export default defineConfig(({ command }) => ({
   build: {
     sourcemap: false,
+    minify: false,
     outDir: 'dist/userscript',
     rollupOptions: {
       output: {
@@ -100,9 +125,6 @@ export default defineConfig(({ command }) => ({
           'pbs.twimg.com',
           'truvaze.com',
           'twihub.net',
-          'telemetry.x-flow.ccwu.cc',
-          'x-flow.ccwu.cc',
-          'xflow-telemetry.chen-m1108.workers.dev',
           '*'
         ],
         grant: ['GM_xmlhttpRequest', 'GM_setValue', 'GM_getValue', 'GM_openInTab'],
@@ -110,32 +132,6 @@ export default defineConfig(({ command }) => ({
         noframes: true,
       },
     }),
-    ...(command === 'build' ? [
-      obfuscator({
-        global: true,
-        options: {
-          stringArray: true,
-          stringArrayEncoding: ['base64'],
-          stringArrayThreshold: 0.75,
-          stringArrayRotate: true,
-          stringArrayShuffle: true,
-          splitStrings: true,
-          splitStringsChunkLength: 8,
-          controlFlowFlattening: true,
-          controlFlowFlatteningThreshold: 0.35,
-          deadCodeInjection: true,
-          deadCodeInjectionThreshold: 0.15,
-          identifierNamesGenerator: 'hexadecimal',
-          renameGlobals: false,
-          renameProperties: false,
-          reservedNames: ['^GM_', '^unsafeWindow$'],
-          numbersToExpressions: true,
-          simplify: true,
-          transformObjectKeys: false,
-          selfDefending: false,
-          sourceMap: false,
-        },
-      }),
-    ] : []),
+    stripCommentsPlugin(),
   ],
 }));

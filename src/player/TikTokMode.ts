@@ -2,7 +2,6 @@ import { VirtualList } from './VirtualList';
 import { PoolManager } from '../api/PoolManager';
 import { formatTime, escapeHtml, formatCount } from '../utils/Format';
 import { loadJSON, saveJSON, loadGM, saveGM, STORAGE_KEYS, BookmarkItem } from '../engine/Storage';
-import { collector } from '../telemetry/EventCollector';
 import { fetchComments, postComment, Comment } from '../api/CommentService';
 import { AdapterManager } from '../api/adapters/AdapterManager';
 import { t } from '../utils/i18n';
@@ -255,7 +254,6 @@ export class TikTokMode {
 
             // Track speed change (only explicit panel selection, not long-press)
             const list = this.pool.getDataPool();
-            if (list.length) collector.trackSpeedChange(String(list[this.currentIndex].id), rate);
         });
 
         this.modal.addEventListener('click', () => {
@@ -274,7 +272,6 @@ export class TikTokMode {
                     } else if (video) {
                         await video.requestPictureInPicture();
                         const list = this.pool.getDataPool();
-                        if (list.length) collector.trackPiP(String(list[this.currentIndex].id));
                     }
                 } catch (err) {
                     console.log('PiP not available', err);
@@ -360,7 +357,6 @@ export class TikTokMode {
                 const list = this.pool.getDataPool();
                 if (list.length) {
                     const item = list[this.currentIndex];
-                    collector.trackAuthorView(item.tweet_account || '', String(item.id));
                 }
                 this.openAuthorPanel();
                 return;
@@ -459,7 +455,6 @@ export class TikTokMode {
                 this.bookmarks.delete(id);
                 this.bookmarksList = this.bookmarksList.filter(b => b.id !== id);
                 bookmarkBtn.classList.remove('active');
-                collector.trackBookmark(id, false);
             } else {
                 this.bookmarks.add(id);
                 const activeAdapter = AdapterManager.getInstance().getActiveAdapter();
@@ -480,7 +475,6 @@ export class TikTokMode {
                 };
                 this.bookmarksList.push(bookmarkItem);
                 bookmarkBtn.classList.add('active');
-                collector.trackBookmark(id, true);
             }
             saveGM(STORAGE_KEYS.BOOKMARKS_V2, this.bookmarksList);
         });
@@ -623,7 +617,6 @@ export class TikTokMode {
 
                 // Track batch copy
                 const currentItem = this.pool.getDataPool()[this.currentIndex];
-                collector.trackBatchCopy(currentItem?.tweet_account || '', links.length);
 
                 // Temporary visual feedback
                 const originalText = authorCopyBtn.textContent;
@@ -741,7 +734,6 @@ export class TikTokMode {
                 a.target = '_blank';
                 a.rel = 'noopener';
                 a.click();
-                collector.trackDownload(String(item.id));
 
                 // Record download
                 const id = String(item.id);
@@ -917,7 +909,6 @@ export class TikTokMode {
         }, 200);
 
         this.pauseAll();
-        collector.flushSession();
         this.pool.stopPrefetching();
 
         // 还原/清除播放列表备份，隐藏返回按钮
@@ -1201,7 +1192,6 @@ export class TikTokMode {
 
             authorBtn.onclick = (e) => {
                 e.stopPropagation();
-                collector.trackAuthorView(item.tweet_account || '', videoId);
                 this.openAuthorPanel();
             };
         }
@@ -1213,12 +1203,8 @@ export class TikTokMode {
             }
         };
 
-        collector.startSession(videoId);
-        collector.trackViewStart(videoId);
         // 同步 site_key 与 author_id，确保此后所有事件可溯源
         const activeAdapter = AdapterManager.getInstance().getActiveAdapter();
-        collector.setSiteKey(activeAdapter ? activeAdapter.id || activeAdapter.constructor.name.replace('Adapter', '').toLowerCase() : '');
-        collector.setCurrentAuthor(item.tweet_account || '');
 
         // M2-3: 异步拉取高光时刻并渲染到进度条（不阻塞播放主流程）
         this.renderHighlightMarkers(videoId);
@@ -1234,7 +1220,6 @@ export class TikTokMode {
             
             this.timeText.textContent = formatTime(video.currentTime) + ' / ' + formatTime(video.duration);
 
-            collector.trackTimeUpdate(video.currentTime);
 
             // Periodically cache video progress (throttled inside ProgressManager)
             ProgressManager.getInstance().saveProgress(videoId, video.currentTime, video.duration, false);
